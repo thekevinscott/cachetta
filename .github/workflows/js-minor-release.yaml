@@ -1,0 +1,14 @@
+name: JS Minor Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/js-publish.yaml
+    with:
+      bump_type: minor
+    secrets: inherit
+    permissions:
+      contents: write
+      id-token: write
