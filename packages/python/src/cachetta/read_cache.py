@@ -1,0 +1,129 @@
+import asyncio
+import json
+from time import time
+from typing import Any, Generator
+from contextlib import asynccontextmanager, contextmanager
+from ._sentinel import _LRU_MISS
+from .exceptions import UnsupportedFormatError
+from .utils import should_use_read_cache, get_extension, get_last_updated, logger
+
+
+@contextmanager
+def read_cache(cache=None, *args, **kwargs) -> Generator[Any, None, None]:
+    if cache is None:
+        logger.debug("cache is null")
+        yield None
+    else:
+        cache_path = cache._get_path(*args, **kwargs)
+
+        # Check in-memory LRU before hitting disk
+        lru_result = cache._lru_get(str(cache_path))
+        if lru_result is not _LRU_MISS:
+            logger.debug("LRU cache hit for %s", cache_path)
+            yield lru_result
+        elif should_use_read_cache(cache, cache_path):
+            ext = get_extension(cache_path)
+
+            logger.debug("Using cache at %s for ext %s", cache_path, ext)
+            if ext == "json":
+                try:
+                    with open(cache_path, "r") as f:
+                        data = json.load(f)
+                    cache._lru_set(str(cache_path), data)
+                    yield data
+                    logger.debug("Used cache at %s", cache_path)
+                except FileNotFoundError:
+                    logger.debug("cache at %s does not exist", cache_path)
+                    yield None
+                except (json.JSONDecodeError, ValueError):
+                    logger.error("Corrupt JSON at %s", cache_path)
+                    yield None
+            else:
+                raise UnsupportedFormatError("Unknown extension: %s" % ext)
+
+        else:
+            logger.debug("cache.read is false, skipping cache")
+            yield None
+
+
+def _read_json_file(cache_path) -> Any:
+    """Read raw JSON data from a cache file, ignoring expiry. Returns None on any failure."""
+    try:
+        with open(cache_path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def read_stale_cache(cache, *args, **kwargs) -> Any:
+    """Reads stale cache data: returns data only if the file exists and is within
+    the stale_duration window (expired but not yet past duration + stale_duration).
+    """
+    if not cache.stale_duration or not cache.read:
+        return None
+
+    cache_path = cache._get_path(*args, **kwargs)
+    mtime = get_last_updated(cache_path)
+    if mtime is None:
+        return None
+
+    age_seconds = time() - mtime
+    duration_seconds = cache.duration.total_seconds()
+    stale_seconds = cache.stale_duration.total_seconds()
+    is_expired = age_seconds >= duration_seconds
+    is_within_stale = age_seconds < (duration_seconds + stale_seconds)
+
+    if is_expired and is_within_stale:
+        logger.debug("Returning stale cache for %s (age: %.1fs)", cache_path, age_seconds)
+        return _read_json_file(cache_path)
+
+    return None
+
+
+def _blocking_read_impl(cache, cache_path):
+    """Extracted blocking disk I/O for thread delegation in async_read_cache."""
+    ext = get_extension(cache_path)
+    logger.debug("Using cache at %s for ext %s", cache_path, ext)
+    if ext == "json":
+        try:
+            with open(cache_path, "r") as f:
+                data = json.load(f)
+            cache._lru_set(str(cache_path), data)
+            return data
+        except FileNotFoundError:
+            logger.debug("cache at %s does not exist", cache_path)
+            return None
+        except (json.JSONDecodeError, ValueError):
+            logger.error("Corrupt JSON at %s", cache_path)
+            return None
+    else:
+        raise UnsupportedFormatError("Unknown extension: %s" % ext)
+
+
+@asynccontextmanager
+async def async_read_cache(cache=None, *args, **kwargs):
+    """Async version of read_cache. LRU check is synchronous (fast),
+    blocking disk I/O is delegated to asyncio.to_thread().
+    """
+    if cache is None:
+        logger.debug("cache is null")
+        yield None
+    else:
+        cache_path = cache._get_path(*args, **kwargs)
+
+        # Check in-memory LRU before hitting disk (synchronous, fast)
+        lru_result = cache._lru_get(str(cache_path))
+        if lru_result is not _LRU_MISS:
+            logger.debug("LRU cache hit for %s", cache_path)
+            yield lru_result
+        elif should_use_read_cache(cache, cache_path):
+            data = await asyncio.to_thread(_blocking_read_impl, cache, cache_path)
+            yield data
+        else:
+            logger.debug("cache.read is false, skipping cache")
+            yield None
+
+
+async def async_read_stale_cache(cache, *args, **kwargs) -> Any:
+    """Async version of read_stale_cache. Delegates blocking I/O to a thread."""
+    return await asyncio.to_thread(read_stale_cache, cache, *args, **kwargs)

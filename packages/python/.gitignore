@@ -1,0 +1,10 @@
+*.egg-info
+.pytest_cache
+.venv
+__pycache__
+.DS_Store
+*.swp
+dist
+.ruff_cache
+build
+uv.lock

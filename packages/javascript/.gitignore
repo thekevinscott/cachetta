@@ -1,0 +1,4 @@
+.wireit
+dist
+node_modules
+dev

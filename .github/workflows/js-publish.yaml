@@ -1,0 +1,156 @@
+name: Publish JS Release
+
+on:
+  workflow_call:
+    inputs:
+      bump_type:
+        description: 'Version bump type: patch or minor'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current version
+        id: current
+        run: |
+          latest_tag=$(git tag --sort=-v:refname | grep -E '^js/cachetta-v[0-9]' | head -n1)
+
+          if [ -z "$latest_tag" ]; then
+            echo "No tags found"
+            echo "version=0.0.0" >> $GITHUB_OUTPUT
+            echo "has_tags=false" >> $GITHUB_OUTPUT
+          else
+            echo "Latest tag: $latest_tag"
+            echo "version=${latest_tag#js/cachetta-v}" >> $GITHUB_OUTPUT
+            echo "has_tags=true" >> $GITHUB_OUTPUT
+
+            commits_since_tag=$(git rev-list ${latest_tag}..HEAD --count -- packages/javascript)
+            echo "commits_since_tag=$commits_since_tag" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for changes (patch only)
+        if: inputs.bump_type == 'patch' && steps.current.outputs.has_tags == 'true'
+        id: check_changes
+        run: |
+          if [ "${{ steps.current.outputs.commits_since_tag }}" -eq 0 ]; then
+            echo "No new commits since last tag, skipping release"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found ${{ steps.current.outputs.commits_since_tag }} commits since last tag"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate new version
+        id: version
+        run: |
+          current="${{ steps.current.outputs.version }}"
+          IFS='.' read -r major minor patch <<< "$current"
+
+          if [ "${{ inputs.bump_type }}" == "minor" ]; then
+            new_version="${major}.$((minor + 1)).0"
+          else
+            new_version="${major}.${minor}.$((patch + 1))"
+          fi
+
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+          echo "New version will be: $new_version"
+
+      - name: Check if tag exists
+        id: tag_check
+        run: |
+          if git ls-remote --tags origin | grep -q "refs/tags/js/cachetta-v${{ steps.version.outputs.new_version }}$"; then
+            echo "Tag js/cachetta-v${{ steps.version.outputs.new_version }} already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine if release should proceed
+        id: should_release
+        run: |
+          if [ "${{ steps.tag_check.outputs.exists }}" == "true" ]; then
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "${{ inputs.bump_type }}" == "patch" ] && [ "${{ steps.current.outputs.has_tags }}" == "true" ]; then
+            if [ "${{ steps.check_changes.outputs.should_release }}" == "false" ]; then
+              echo "proceed=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        if: steps.should_release.outputs.proceed == 'true'
+        working-directory: packages/javascript
+        run: npm version ${{ steps.version.outputs.new_version }} --no-git-tag-version
+
+      - name: Commit version bump
+        if: steps.should_release.outputs.proceed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/javascript/package.json
+          git commit -m "chore(js): bump to ${{ steps.version.outputs.new_version }} [skip-version]"
+          git push
+
+      - name: Create and push tag
+        if: steps.should_release.outputs.proceed == 'true'
+        id: tag
+        run: |
+          git tag -a "js/cachetta-v${{ steps.version.outputs.new_version }}" -m "Release js/cachetta-v${{ steps.version.outputs.new_version }}"
+          git push origin "js/cachetta-v${{ steps.version.outputs.new_version }}"
+          echo "created=true" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        if: steps.tag.outputs.created == 'true'
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: pnpm/action-setup@v4
+        if: steps.tag.outputs.created == 'true'
+        with:
+          version: 9
+
+      - name: Get pnpm store directory
+        if: steps.tag.outputs.created == 'true'
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        if: steps.tag.outputs.created == 'true'
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        if: steps.tag.outputs.created == 'true'
+        run: pnpm install
+
+      - name: Build
+        if: steps.tag.outputs.created == 'true'
+        working-directory: packages/javascript
+        run: pnpm build
+
+      - name: Publish to npm
+        if: steps.tag.outputs.created == 'true'
+        working-directory: packages/javascript
+        run: pnpm publish --no-git-checks --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Rollback tag on failure
+        if: failure() && steps.tag.outputs.created == 'true'
+        run: git push --delete origin "js/cachetta-v${{ steps.version.outputs.new_version }}"

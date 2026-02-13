@@ -1,0 +1,13 @@
+name: Python Minor Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/py-publish.yaml
+    with:
+      bump_type: minor
+    permissions:
+      contents: write
+      id-token: write

@@ -1,0 +1,30 @@
+name: Python Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/python/**'
+      - '.github/workflows/py-test.yaml'
+  pull_request:
+    paths:
+      - 'packages/python/**'
+      - '.github/workflows/py-test.yaml'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        working-directory: packages/python
+        run: uv sync
+
+      - name: Run tests
+        working-directory: packages/python
+        run: uv run pytest -x -v

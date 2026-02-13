@@ -1,0 +1,16 @@
+name: JS Patch Release (Nightly)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/js-publish.yaml
+    with:
+      bump_type: patch
+    secrets: inherit
+    permissions:
+      contents: write
+      id-token: write
