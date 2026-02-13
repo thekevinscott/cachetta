@@ -1,0 +1,58 @@
+{
+  "name": "cachetta",
+  "version": "0.5.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "scripts": {
+    "test:unit": "wireit",
+    "test:unit:watch": "wireit",
+    "test:integration": "wireit",
+    "test:integration:watch": "wireit",
+    "build": "wireit"
+  },
+  "wireit": {
+    "test:unit": {
+      "command": "vitest run -c vitest.config.unit.ts"
+    },
+    "test:unit:watch": {
+      "command": "vitest watch -c vitest.config.unit.ts"
+    },
+    "test:integration": {
+      "command": "vitest run -c vitest.config.integration.ts",
+      "dependencies": [
+        "build"
+      ]
+    },
+    "test:integration:watch": {
+      "command": "vitest watch -c vitest.config.integration.ts",
+      "dependencies": [
+        "build"
+      ]
+    },
+    "build": {
+      "command": "vite build",
+      "dependencies": [],
+      "files": [
+        "./src/**/*.ts",
+        "./tsconfig.json",
+        "./package.json",
+        "./vite.config.ts"
+      ],
+      "output": [
+        "dist"
+      ]
+    }
+  },
+  "devDependencies": {
+    "cachetta": "workspace:*",
+    "@types/node": "^22.10.0",
+    "dotenv": "^17.2.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^2.1.6",
+    "wireit": "^0.14.9"
+  },
+  "dependencies": {}
+}
