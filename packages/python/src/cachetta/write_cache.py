@@ -5,10 +5,10 @@ import tempfile
 import threading
 from collections import OrderedDict
 from contextlib import asynccontextmanager, contextmanager
-from pathlib import Path
+from pathlib import Path  # noqa: F401 (used by tests via mock patching)
 from typing import Any, Generator
 from .exceptions import UnsupportedFormatError
-from .utils import get_extension, logger
+from .utils import get_extension
 
 # Track directories already created in this process to skip redundant mkdir calls.
 # Bounded OrderedDict with LRU eviction to prevent unbounded memory growth.

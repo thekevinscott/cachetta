@@ -12,9 +12,8 @@ from cachetta._sentinel import _LRU_MISS
 import pytest
 
 from cachetta.cachetta import Cachetta
-from cachetta.exceptions import CachettaError
-from cachetta.read_cache import read_cache, read_stale_cache
-from cachetta.write_cache import write_cache, write_cache_ctx
+from cachetta.read_cache import read_stale_cache
+from cachetta.write_cache import write_cache_ctx
 
 
 def describe_unified_call():
@@ -50,7 +49,8 @@ def describe_unified_call():
             def my_fn(x):
                 return {"x": x}
 
-            new_path = lambda x: f"{tmpdir}/{x}.json"
+            def new_path(x):
+                return f"{tmpdir}/{x}.json"
             wrapped = cache(my_fn, path=new_path)
             result = wrapped("hello")
             assert result == {"x": "hello"}
@@ -439,7 +439,7 @@ def describe_write_cache_context_manager():
             cache_path = Path(tmpdir) / "test.json"
             cache = Cachetta(path=str(cache_path))
 
-            with write_cache_ctx(cache) as writer:
+            with write_cache_ctx(cache) as _writer:
                 pass  # Don't set anything
 
             assert not cache_path.exists()

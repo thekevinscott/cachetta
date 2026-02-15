@@ -21,7 +21,6 @@ from cachetta import (
     write_cache,
     write_cache_ctx,
 )
-from cachetta.read_cache import read_stale_cache
 from cachetta.utils.cache_fn import _in_flight
 
 
@@ -613,7 +612,8 @@ def describe_construction():
         assert cache._lru is None
 
     def test_all_parameters():
-        cond = lambda r: r is not None
+        def cond(r):
+            return r is not None
         cache = Cachetta(
             path="test.json",
             write=False,

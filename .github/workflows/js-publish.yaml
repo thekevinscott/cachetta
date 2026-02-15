@@ -153,6 +153,19 @@ jobs:
         working-directory: packages/javascript
         run: npm publish --provenance --access public
 
+      - name: Pack
+        if: steps.tag.outputs.created == 'true'
+        working-directory: packages/javascript
+        run: pnpm pack
+
+      - name: GitHub Release
+        if: steps.tag.outputs.created == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: js/cachetta-v${{ steps.version.outputs.new_version }}
+          generate_release_notes: true
+          files: packages/javascript/cachetta-*.tgz
+
       - name: Rollback tag on failure
         if: failure() && steps.tag.outputs.created == 'true'
         run: git push --delete origin "js/cachetta-v${{ steps.version.outputs.new_version }}"
