@@ -140,7 +140,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
     validateCachePath(cachePath);
     const mtime = await getLastUpdated(cachePath);
     if (mtime === null) return null;
-    return Date.now() - mtime;
+    return Math.max(0, Date.now() - mtime);
   }
 
   ageSync(...args: unknown[]): number | null {
@@ -148,7 +148,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
     validateCachePath(cachePath);
     const mtime = getLastUpdatedSync(cachePath);
     if (mtime === null) return null;
-    return Date.now() - mtime;
+    return Math.max(0, Date.now() - mtime);
   }
 
   async info(...args: unknown[]): Promise<CacheInfo> {
@@ -158,7 +158,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
     if (mtime === null) {
       return { exists: false, age: null, expired: false, stale: false, path: cachePath };
     }
-    const ageMs = Date.now() - mtime;
+    const ageMs = Math.max(0, Date.now() - mtime);
     const expired = ageMs >= this.duration;
     const stale = expired && this.staleDuration != null && ageMs < (this.duration + this.staleDuration);
     return { exists: true, age: ageMs, expired, stale, path: cachePath };
@@ -171,7 +171,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
     if (mtime === null) {
       return { exists: false, age: null, expired: false, stale: false, path: cachePath };
     }
-    const ageMs = Date.now() - mtime;
+    const ageMs = Math.max(0, Date.now() - mtime);
     const expired = ageMs >= this.duration;
     const stale = expired && this.staleDuration != null && ageMs < (this.duration + this.staleDuration);
     return { exists: true, age: ageMs, expired, stale, path: cachePath };
