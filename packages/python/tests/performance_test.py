@@ -1,5 +1,5 @@
 import asyncio
-import json
+import pickle
 import tempfile
 from datetime import timedelta
 from pathlib import Path
@@ -112,9 +112,9 @@ def describe_lru_integration_with_read_cache():
 
     def test_read_cache_populates_lru_from_disk():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            with open(cache_path, "w") as f:
-                json.dump({"from": "disk"}, f)
+            cache_path = Path(tmpdir) / "test.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"from": "disk"}, f)
 
             cache = Cachetta(path=str(cache_path), lru_size=10)
 
@@ -192,26 +192,26 @@ def describe_eafp_get_last_updated():
             mock_exists.assert_not_called()
 
 
-def describe_streaming_json():
-    def test_uses_json_load_not_json_loads():
-        """read_cache should use json.load(f) for streaming rather than f.read() + json.loads()."""
+def describe_pickle_loading():
+    def test_uses_pickle_load():
+        """read_cache should use pickle.load(f) for deserialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            with open(cache_path, "w") as f:
-                json.dump({"streaming": True}, f)
+            cache_path = Path(tmpdir) / "test.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"streaming": True}, f)
 
             cache = Cachetta(path=str(cache_path))
 
-            with patch("cachetta.read_cache.json.load", return_value={"streaming": True}) as mock_load:
+            with patch("cachetta.read_cache.pickle.load", return_value={"streaming": True}) as mock_load:
                 with read_cache(cache) as _data:
                     pass
                 mock_load.assert_called_once()
 
-    def test_handles_corrupt_json_gracefully():
+    def test_handles_corrupt_data_gracefully():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "corrupt.json"
+            cache_path = Path(tmpdir) / "corrupt.dat"
             with open(cache_path, "w") as f:
-                f.write("not valid json{{{")
+                f.write("not valid pickle data")
 
             cache = Cachetta(path=str(cache_path))
             with read_cache(cache) as data:
@@ -219,7 +219,7 @@ def describe_streaming_json():
             assert data is None
 
     def test_handles_missing_file_gracefully():
-        cache = Cachetta(path="/nonexistent/missing.json")
+        cache = Cachetta(path="/nonexistent/missing.dat")
         with read_cache(cache) as data:
             pass
         assert data is None

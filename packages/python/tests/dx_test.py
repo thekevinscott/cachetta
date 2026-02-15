@@ -1,6 +1,6 @@
 import asyncio
-import json
 import os
+import pickle
 import tempfile
 from contextlib import contextmanager
 from datetime import timedelta
@@ -344,8 +344,9 @@ def describe_stale_while_revalidate():
 
     def test_read_stale_cache_returns_none_for_fresh_data():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache_path.write_text('{"data": true}')
+            cache_path = Path(tmpdir) / "test.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"data": True}, f)
 
             cache = Cachetta(
                 path=str(cache_path),
@@ -358,8 +359,9 @@ def describe_stale_while_revalidate():
 
     def test_read_stale_cache_returns_data_in_stale_window():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache_path.write_text('{"data": true}')
+            cache_path = Path(tmpdir) / "test.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"data": True}, f)
             # Set mtime to 90 minutes ago (expired but within stale window)
             old_time = time() - 5400
             os.utime(cache_path, (old_time, old_time))
@@ -374,8 +376,9 @@ def describe_stale_while_revalidate():
 
     def test_read_stale_cache_returns_none_past_stale_window():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache_path.write_text('{"data": true}')
+            cache_path = Path(tmpdir) / "test.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"data": True}, f)
             # Set mtime to 3 hours ago (past stale window)
             old_time = time() - 10800
             os.utime(cache_path, (old_time, old_time))
@@ -390,8 +393,9 @@ def describe_stale_while_revalidate():
 
     async def test_stale_while_revalidate_async():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache_path.write_text('{"version": 1}')
+            cache_path = Path(tmpdir) / "test.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"version": 1}, f)
             # Make it expired but in stale window
             old_time = time() - 5400
             os.utime(cache_path, (old_time, old_time))
@@ -431,8 +435,8 @@ def describe_write_cache_context_manager():
                 writer.set({"written": True})
 
             assert cache_path.exists()
-            with open(cache_path) as f:
-                assert json.load(f) == {"written": True}
+            with open(cache_path, "rb") as f:
+                assert pickle.load(f) == {"written": True}
 
     def test_write_cache_ctx_noop_when_not_set():
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1,10 +1,9 @@
-import json
+import pickle
 from unittest.mock import patch, Mock
 import pytest
 from pathlib import Path
 import tempfile
 from cachetta.cachetta import Cachetta
-from cachetta.exceptions import UnsupportedFormatError
 from cachetta.read_cache import read_cache
 
 
@@ -12,13 +11,6 @@ from cachetta.read_cache import read_cache
 def mock_should_use_read_cache():
     with patch("cachetta.utils.should_use_read_cache.should_use_read_cache", new_callable=Mock) as mock:
         mock.return_value = True
-        yield mock
-
-
-@pytest.fixture(autouse=True)
-def mock_get_extension():
-    with patch("cachetta.utils.get_extension.get_extension", new_callable=Mock) as mock:
-        mock.return_value = "mock-extension"
         yield mock
 
 
@@ -38,54 +30,40 @@ def describe_read_cache():
         with read_cache(MockCache(path="foobar")) as d:
             assert d is None
 
-    def test_it_yields_json(mock_should_use_read_cache, mock_get_extension):
+    def test_it_yields_data(mock_should_use_read_cache):
         with tempfile.TemporaryDirectory() as tmpdir:
-            temp_file = Path(tmpdir) / "file.json"
+            temp_file = Path(tmpdir) / "file.dat"
             data = {
                 "foo": "bar",
             }
-            with open(temp_file, "w") as f:
-                f.write(json.dumps(data))
-            mock_get_extension.return_value = "json"
+            with open(temp_file, "wb") as f:
+                pickle.dump(data, f)
             mock_should_use_read_cache.return_value = True
             with read_cache(MockCache(path=temp_file)) as d:
                 pass
             assert d == data
 
     def test_it_returns_none_for_corrupt_data(
-        mock_should_use_read_cache, mock_get_extension
+        mock_should_use_read_cache,
     ):
         with tempfile.TemporaryDirectory() as tmpdir:
-            temp_file = Path(tmpdir) / "file.json"
+            temp_file = Path(tmpdir) / "file.dat"
             data = "foobar"
             with open(temp_file, "w") as f:
                 f.write(data)
-            mock_get_extension.return_value = "json"
             mock_should_use_read_cache.return_value = True
             with read_cache(MockCache(path=temp_file)) as f:
                 pass
             assert f is None
 
-    def test_it_raises_if_given_unexpected_exception(mock_get_extension, mock_should_use_read_cache):
-        ext = "foo"
-        mock_get_extension.return_value = ext
-        mock_should_use_read_cache.return_value = True
+    def test_it_handles_function_based_cache_paths(mock_should_use_read_cache):
         with tempfile.TemporaryDirectory() as tmpdir:
-            temp_file = Path(tmpdir) / f"file.{ext}"
-            temp_file.touch()  # Create the file so it exists
-            with pytest.raises(UnsupportedFormatError, match=f"Unknown extension: {ext}"):
-                with read_cache(MockCache(path=temp_file)):
-                    pass
-
-    def test_it_handles_function_based_cache_paths(mock_should_use_read_cache, mock_get_extension):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            temp_file = Path(tmpdir) / "dynamic-cache.json"
+            temp_file = Path(tmpdir) / "dynamic-cache.dat"
             data = {"dynamic": True}
 
-            with open(temp_file, "w") as f:
-                f.write(json.dumps(data))
+            with open(temp_file, "wb") as f:
+                pickle.dump(data, f)
 
-            mock_get_extension.return_value = "json"
             mock_should_use_read_cache.return_value = True
 
             def path_fn(id):
@@ -95,9 +73,9 @@ def describe_read_cache():
                 pass
             assert d == data
 
-    def test_it_handles_complex_nested_objects(mock_should_use_read_cache, mock_get_extension):
+    def test_it_handles_complex_nested_objects(mock_should_use_read_cache):
         with tempfile.TemporaryDirectory() as tmpdir:
-            temp_file = Path(tmpdir) / "complex.json"
+            temp_file = Path(tmpdir) / "complex.dat"
             complex_data = {
                 "string": "hello",
                 "number": 123,
@@ -107,10 +85,9 @@ def describe_read_cache():
                 "object": {"nested": {"deep": True}}
             }
 
-            with open(temp_file, "w") as f:
-                f.write(json.dumps(complex_data))
+            with open(temp_file, "wb") as f:
+                pickle.dump(complex_data, f)
 
-            mock_get_extension.return_value = "json"
             mock_should_use_read_cache.return_value = True
 
             with read_cache(MockCache(path=temp_file)) as d:
@@ -119,10 +96,28 @@ def describe_read_cache():
             assert d["array"] == [1, 2, 3]
             assert d["object"]["nested"]["deep"] is True
 
-    def test_it_returns_null_for_unknown_extension_when_cache_should_not_be_used(mock_get_extension, mock_should_use_read_cache):
-        mock_get_extension.return_value = "unknown"
-        mock_should_use_read_cache.return_value = False  # Cache should not be used
+    def test_it_returns_null_for_unknown_extension_when_cache_should_not_be_used(mock_should_use_read_cache):
+        mock_should_use_read_cache.return_value = False
 
         with read_cache(MockCache(path="test.unknown")) as d:
             pass
         assert d is None
+
+    def test_it_handles_complex_python_types(mock_should_use_read_cache):
+        """Pickle can handle types that JSON cannot."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_file = Path(tmpdir) / "complex.dat"
+            data = {
+                "set": {1, 2, 3},
+                "tuple": (1, 2, 3),
+                "bytes": b"hello",
+            }
+            with open(temp_file, "wb") as f:
+                pickle.dump(data, f)
+
+            mock_should_use_read_cache.return_value = True
+            with read_cache(MockCache(path=temp_file)) as d:
+                pass
+            assert d["set"] == {1, 2, 3}
+            assert d["tuple"] == (1, 2, 3)
+            assert d["bytes"] == b"hello"

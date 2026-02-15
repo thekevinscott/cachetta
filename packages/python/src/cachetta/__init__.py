@@ -5,7 +5,6 @@ from .exceptions import (
     CachettaError,
     CacheCorruptError,
     InvalidPathError,
-    UnsupportedFormatError,
 )
 
 
@@ -21,5 +20,4 @@ __all__ = [
     "CachettaError",
     "CacheCorruptError",
     "InvalidPathError",
-    "UnsupportedFormatError",
 ]
