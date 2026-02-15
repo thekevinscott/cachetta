@@ -6,14 +6,14 @@ nav_order: 1
 
 # Cachetta
 
-File-based caching with the same API across JavaScript/TypeScript and Python. The name is a portmanteau of *cache* and *rosetta*.
+File-based caching with the same API across TypeScript and Python. The name is a portmanteau of *cache* and *rosetta*.
 
 Both implementations share identical concepts -- configuration, decorators, read/write primitives, LRU, stale-while-revalidate -- differing only where language conventions require it (e.g. `snake_case` vs `camelCase`, `timedelta` vs milliseconds).
 
 ## Install
 
 ```bash
-# JavaScript/TypeScript
+# TypeScript
 pnpm add cachetta
 
 # Python
@@ -22,7 +22,7 @@ uv add cachetta
 
 ## Quick Start
 
-### JavaScript/TypeScript
+### TypeScript
 
 ```javascript
 import { Cachetta } from 'cachetta';
@@ -51,9 +51,18 @@ def get_data():
 result = get_data()
 ```
 
+## Serialization
+
+Cachetta uses native binary serialization in both languages -- **pickle** in Python and **v8.serialize** in TypeScript. This means:
+
+- **Any file extension works** -- `.json`, `.cache`, `.dat`, `.yaml`, whatever you want. The extension is just a name; cachetta doesn't interpret it.
+- **Any serializable type works** -- Python: sets, tuples, bytes, dataclasses, etc. TypeScript: Maps, Sets, Dates, Buffers, typed arrays, etc.
+- **Not human-readable** -- the trade-off for native type support and speed is that cache files are binary. If you need to inspect cache contents, use `readCache` / `read_cache` programmatically.
+- **Atomic writes** -- both languages use temp file + rename to prevent corruption from crashes or concurrent writes.
+
 ## Feature Parity
 
-| Feature | JavaScript/TypeScript | Python |
+| Feature | TypeScript | Python |
 |---|---|---|
 | File-based cache | Yes | Yes |
 | Decorator / function wrapper | Yes | Yes |
