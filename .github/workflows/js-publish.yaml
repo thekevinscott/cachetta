@@ -14,6 +14,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,13 +103,22 @@ jobs:
             echo "package.json already at ${{ steps.version.outputs.new_version }}, skipping"
           fi
 
-      - name: Commit version bump
+      - name: Create version bump PR
         if: steps.should_release.outputs.proceed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          branch="release/js-v${{ steps.version.outputs.new_version }}"
+          git checkout -b "$branch"
           git add packages/javascript/package.json
-          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "chore(js): bump to ${{ steps.version.outputs.new_version }} [skip-version]" && git push)
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(js): bump to ${{ steps.version.outputs.new_version }} [skip-version]"
+          git push origin "$branch"
+          gh pr create --title "chore(js): bump to v${{ steps.version.outputs.new_version }}" \
+            --body "Automated version bump from publish workflow" --base main
+          gh pr merge --auto --squash
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Create and push tag
         if: steps.should_release.outputs.proceed == 'true'
