@@ -11,10 +11,3 @@ export class InvalidPathError extends CachettaError {
     this.name = 'InvalidPathError';
   }
 }
-
-export class UnsupportedFormatError extends CachettaError {
-  constructor(extension: string) {
-    super(`Unsupported cache format: ${extension}`);
-    this.name = 'UnsupportedFormatError';
-  }
-}

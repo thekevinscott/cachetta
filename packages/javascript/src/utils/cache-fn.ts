@@ -1,7 +1,7 @@
 import type { Cachetta } from "../Cachetta.js";
-import { readCache, readStaleCache } from "../read-cache.js";
-import type { CachableFunction } from "../types.js";
-import { writeCache } from "../write-cache.js";
+import { readCache, readStaleCache, readCacheSync, readStaleCacheSync } from "../read-cache.js";
+import type { CachableFunction, CachableFunctionSync } from "../types.js";
+import { writeCache, writeCacheSync } from "../write-cache.js";
 import { logger } from "./logger.js";
 
 // In-flight promise deduplication keyed by resolved cache path (primary callers only)
@@ -62,6 +62,31 @@ export const cacheFn = (cache: Cachetta<any>, originalMethod: CachableFunction) 
     } finally {
       inFlight.delete(cacheKey);
     }
+  }
+  return wrapper;
+}
+
+export const cacheFnSync = (cache: Cachetta<any>, originalMethod: CachableFunctionSync) => {
+  function wrapper(this: any, ...args: unknown[]) {
+    const data = readCacheSync(cache, ...args);
+    if (data != null) {
+      return data;
+    }
+
+    // Stale-while-revalidate: return stale data, no background refresh in sync context
+    if (cache.staleDuration) {
+      const staleData = readStaleCacheSync(cache, ...args);
+      if (staleData != null) {
+        return staleData;
+      }
+    }
+
+    // No in-flight dedup for sync (sequential by definition)
+    const result = originalMethod.apply(this, args);
+    if (!cache.condition || cache.condition(result)) {
+      writeCacheSync(cache, result, ...args);
+    }
+    return result;
   }
   return wrapper;
 }

@@ -1,11 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { promises as fs } from 'fs';
+import { promises as fs, utimesSync, accessSync, writeFileSync as fsWriteFileSync, unlinkSync as fsUnlinkSync } from 'fs';
 import { join } from 'path';
-import { Cachetta, readCache, writeCache, CachettaError, InvalidPathError, UnsupportedFormatError } from 'cachetta';
+import { deserialize } from 'v8';
+import { Cachetta, readCache, writeCache, readCacheSync, writeCacheSync, CachettaError, InvalidPathError } from 'cachetta';
 
 const setTimeOfFile = async (amount: number, cachePath: string) => {
   const oldTime = new Date(Date.now() - amount);
   await fs.utimes(cachePath, oldTime, oldTime);
+};
+
+const setTimeOfFileSync = (amount: number, cachePath: string) => {
+  const oldTime = new Date(Date.now() - amount);
+  utimesSync(cachePath, oldTime, oldTime);
 };
 
 describe('comprehensive integration tests', () => {
@@ -21,7 +27,7 @@ describe('comprehensive integration tests', () => {
   });
 
   describe('basic read/write cycle', () => {
-    it('should write and read JSON data', async () => {
+    it('should write and read data', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'data.json') });
       const data = { key: 'value', nested: { arr: [1, 2, 3] } };
       await writeCache(cache, data);
@@ -43,23 +49,79 @@ describe('comprehensive integration tests', () => {
     it('should handle null as cached value', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'null.json') });
       await writeCache(cache, null);
-      // readCache returns null for both missing and null-valued, so this tests the write path
-      const content = await fs.readFile(join(tempDir, 'null.json'), 'utf8');
-      expect(content).toBe('null');
+      // readCache returns null for both missing and null-valued, so verify file was written
+      const buffer = await fs.readFile(join(tempDir, 'null.json'));
+      expect(deserialize(buffer)).toBeNull();
     });
 
     it('should handle string as cached value', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'str.json') });
       await writeCache(cache, 'hello world');
-      const content = await fs.readFile(join(tempDir, 'str.json'), 'utf8');
-      expect(JSON.parse(content)).toBe('hello world');
+      const buffer = await fs.readFile(join(tempDir, 'str.json'));
+      expect(deserialize(buffer)).toBe('hello world');
     });
 
     it('should handle number as cached value', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'num.json') });
       await writeCache(cache, 42);
-      const content = await fs.readFile(join(tempDir, 'num.json'), 'utf8');
-      expect(JSON.parse(content)).toBe(42);
+      const buffer = await fs.readFile(join(tempDir, 'num.json'));
+      expect(deserialize(buffer)).toBe(42);
+    });
+
+    it('should handle Date objects', async () => {
+      const cache = new Cachetta({ path: join(tempDir, 'date.dat') });
+      const now = new Date();
+      await writeCache(cache, now);
+      const result = await readCache<Date>(cache);
+      expect(result).toBeInstanceOf(Date);
+      expect(result!.getTime()).toBe(now.getTime());
+    });
+
+    it('should handle Map objects', async () => {
+      const cache = new Cachetta({ path: join(tempDir, 'map.dat') });
+      const data = new Map([['a', 1], ['b', 2]]);
+      await writeCache(cache, data);
+      const result = await readCache<Map<string, number>>(cache);
+      expect(result).toBeInstanceOf(Map);
+      expect(result!.get('a')).toBe(1);
+      expect(result!.get('b')).toBe(2);
+    });
+
+    it('should handle Set objects', async () => {
+      const cache = new Cachetta({ path: join(tempDir, 'set.dat') });
+      const data = new Set([1, 2, 3]);
+      await writeCache(cache, data);
+      const result = await readCache<Set<number>>(cache);
+      expect(result).toBeInstanceOf(Set);
+      expect(result!.has(1)).toBe(true);
+      expect(result!.size).toBe(3);
+    });
+
+    it('should handle RegExp objects', async () => {
+      const cache = new Cachetta({ path: join(tempDir, 'regex.dat') });
+      const data = /hello\s+world/gi;
+      await writeCache(cache, data);
+      const result = await readCache<RegExp>(cache);
+      expect(result).toBeInstanceOf(RegExp);
+      expect(result!.source).toBe(data.source);
+      expect(result!.flags).toBe(data.flags);
+    });
+
+    it('should handle Buffer/TypedArray objects', async () => {
+      const cache = new Cachetta({ path: join(tempDir, 'buffer.dat') });
+      const data = Buffer.from([1, 2, 3, 4, 5]);
+      await writeCache(cache, data);
+      const result = await readCache<Buffer>(cache);
+      expect(Buffer.isBuffer(result)).toBe(true);
+      expect(result).toEqual(data);
+    });
+
+    it('should work with any file extension', async () => {
+      for (const ext of ['.json', '.dat', '.cache', '.yaml', '.xml', '.foo', '']) {
+        const cache = new Cachetta({ path: join(tempDir, `data${ext}`) });
+        await writeCache(cache, { ext });
+        expect(await readCache(cache)).toEqual({ ext });
+      }
     });
   });
 
@@ -99,9 +161,9 @@ describe('comprehensive integration tests', () => {
       const cachePath = join(tempDir, 'rw.json');
       const cache = new Cachetta({ path: cachePath, read: false, write: true });
       await writeCache(cache, { data: 1 });
-      // File should exist
-      const content = await fs.readFile(cachePath, 'utf8');
-      expect(JSON.parse(content)).toEqual({ data: 1 });
+      // File should exist with correct data
+      const buffer = await fs.readFile(cachePath);
+      expect(deserialize(buffer)).toEqual({ data: 1 });
       // But readCache should skip
       expect(await readCache(cache)).toBeNull();
     });
@@ -199,8 +261,8 @@ describe('comprehensive integration tests', () => {
       expect(await cached()).toBe(1);
 
       // Verify it wrote to the override path
-      const content = await fs.readFile(join(tempDir, 'override.json'), 'utf8');
-      expect(JSON.parse(content)).toBe(1);
+      const buffer = await fs.readFile(join(tempDir, 'override.json'));
+      expect(deserialize(buffer)).toBe(1);
     });
   });
 
@@ -234,7 +296,7 @@ describe('comprehensive integration tests', () => {
   });
 
   describe('corrupt cache recovery', () => {
-    it('should return null for corrupt JSON', async () => {
+    it('should return null for corrupt data', async () => {
       const cachePath = join(tempDir, 'corrupt.json');
       const cache = new Cachetta({ path: cachePath });
       await fs.writeFile(cachePath, '{ broken json !!!');
@@ -248,7 +310,7 @@ describe('comprehensive integration tests', () => {
       expect(await readCache(cache)).toBeNull();
     });
 
-    it('should return null for non-JSON content', async () => {
+    it('should return null for random binary content', async () => {
       const cachePath = join(tempDir, 'binary.json');
       const cache = new Cachetta({ path: cachePath });
       await fs.writeFile(cachePath, Buffer.from([0x00, 0x01, 0x02, 0xFF]));
@@ -265,33 +327,6 @@ describe('comprehensive integration tests', () => {
     it('should throw InvalidPathError for .. segments in writeCache', async () => {
       const cache = new Cachetta({ path: join(tempDir, '../../escape.json') });
       await expect(writeCache(cache, { bad: true })).rejects.toThrow(InvalidPathError);
-    });
-  });
-
-  describe('prototype pollution prevention', () => {
-    it('should strip __proto__ from cached data', async () => {
-      const cachePath = join(tempDir, 'proto.json');
-      const cache = new Cachetta({ path: cachePath });
-      await fs.writeFile(cachePath, '{"__proto__":{"admin":true},"safe":"ok"}');
-      const result = await readCache<Record<string, unknown>>(cache);
-      expect(result).toEqual({ safe: 'ok' });
-      expect((result as any).__proto__?.admin).toBeUndefined();
-    });
-
-    it('should strip constructor and prototype keys', async () => {
-      const cachePath = join(tempDir, 'proto2.json');
-      const cache = new Cachetta({ path: cachePath });
-      await fs.writeFile(cachePath, '{"constructor":{"hack":true},"prototype":{"evil":true},"data":1}');
-      const result = await readCache<Record<string, unknown>>(cache);
-      expect(result).toEqual({ data: 1 });
-    });
-
-    it('should strip dangerous keys in nested objects', async () => {
-      const cachePath = join(tempDir, 'nested-proto.json');
-      const cache = new Cachetta({ path: cachePath });
-      await fs.writeFile(cachePath, '{"obj":{"__proto__":{"bad":true},"ok":"yes"}}');
-      const result = await readCache<Record<string, any>>(cache);
-      expect(result).toEqual({ obj: { ok: 'yes' } });
     });
   });
 
@@ -346,20 +381,6 @@ describe('comprehensive integration tests', () => {
       };
       await writeCache(cache, data);
       expect(await readCache(cache)).toEqual(data);
-    });
-  });
-
-  describe('unsupported formats', () => {
-    it('should throw UnsupportedFormatError for non-JSON extension on write', async () => {
-      const cache = new Cachetta({ path: join(tempDir, 'data.xml') });
-      await expect(writeCache(cache, { data: 1 })).rejects.toThrow(UnsupportedFormatError);
-    });
-
-    it('should throw UnsupportedFormatError for non-JSON extension on read of existing file', async () => {
-      const cachePath = join(tempDir, 'data.yaml');
-      await fs.writeFile(cachePath, 'key: value');
-      const cache = new Cachetta({ path: cachePath });
-      await expect(readCache(cache)).rejects.toThrow(UnsupportedFormatError);
     });
   });
 
@@ -573,8 +594,8 @@ describe('comprehensive integration tests', () => {
 
       // Wait for the fire-and-forget background refresh to write updated data
       await vi.waitFor(async () => {
-        const freshContent = await fs.readFile(cachePath, 'utf8');
-        expect(JSON.parse(freshContent)).toEqual({ version: 2 });
+        const buffer = await fs.readFile(cachePath);
+        expect(deserialize(buffer)).toEqual({ version: 2 });
       });
     });
   });
@@ -625,6 +646,259 @@ describe('comprehensive integration tests', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  // =============================================
+  // Sync API tests
+  // =============================================
+
+  describe('sync: basic read/write cycle', () => {
+    it('should write and read data synchronously', () => {
+      const cache = new Cachetta({ path: join(tempDir, 'sync-data.json') });
+      const data = { key: 'value', nested: { arr: [1, 2, 3] } };
+      writeCacheSync(cache, data);
+      expect(readCacheSync(cache)).toEqual(data);
+    });
+
+    it('should return null for nonexistent cache', () => {
+      const cache = new Cachetta({ path: join(tempDir, 'sync-nope.json') });
+      expect(readCacheSync(cache)).toBeNull();
+    });
+
+    it('should handle complex types (Date, Map, Set)', () => {
+      const dateCache = new Cachetta({ path: join(tempDir, 'sync-date.dat') });
+      const now = new Date();
+      writeCacheSync(dateCache, now);
+      const dateResult = readCacheSync<Date>(dateCache);
+      expect(dateResult).toBeInstanceOf(Date);
+      expect(dateResult!.getTime()).toBe(now.getTime());
+
+      const mapCache = new Cachetta({ path: join(tempDir, 'sync-map.dat') });
+      const map = new Map([['x', 10]]);
+      writeCacheSync(mapCache, map);
+      const mapResult = readCacheSync<Map<string, number>>(mapCache);
+      expect(mapResult).toBeInstanceOf(Map);
+      expect(mapResult!.get('x')).toBe(10);
+    });
+
+    it('should work with any file extension', () => {
+      for (const ext of ['.json', '.dat', '.cache', '.foo', '']) {
+        const cache = new Cachetta({ path: join(tempDir, `sync${ext}`) });
+        writeCacheSync(cache, { ext });
+        expect(readCacheSync(cache)).toEqual({ ext });
+      }
+    });
+  });
+
+  describe('sync: cache expiration', () => {
+    it('should return data before expiration', () => {
+      const cachePath = join(tempDir, 'sync-exp.json');
+      const cache = new Cachetta({ path: cachePath, duration: 5000 });
+      writeCacheSync(cache, { fresh: true });
+      expect(readCacheSync(cache)).toEqual({ fresh: true });
+    });
+
+    it('should return null after expiration', () => {
+      const cachePath = join(tempDir, 'sync-exp.json');
+      const cache = new Cachetta({ path: cachePath, duration: 1000 });
+      writeCacheSync(cache, { fresh: true });
+      setTimeOfFileSync(2000, cachePath);
+      expect(readCacheSync(cache)).toBeNull();
+    });
+  });
+
+  describe('sync: read/write flag combinations', () => {
+    it('read=false: writes but does not read', () => {
+      const cachePath = join(tempDir, 'sync-rw.json');
+      const cache = new Cachetta({ path: cachePath, read: false, write: true });
+      writeCacheSync(cache, { data: 1 });
+      expect(readCacheSync(cache)).toBeNull();
+    });
+
+    it('write=false: does not write', () => {
+      const cachePath = join(tempDir, 'sync-ro.json');
+      const cache = new Cachetta({ path: cachePath, read: true, write: false });
+      writeCacheSync(cache, { data: 1 });
+      expect(() => accessSync(cachePath)).toThrow();
+    });
+  });
+
+  describe('sync: wrapSync', () => {
+    it('should wrap a sync function and cache its result', () => {
+      const cache = new Cachetta({ path: join(tempDir, 'sync-wrap.json') });
+      let calls = 0;
+      const fn = () => { calls++; return { result: calls }; };
+      const cached = cache.wrapSync(fn);
+
+      expect(cached()).toEqual({ result: 1 });
+      expect(cached()).toEqual({ result: 1 });
+      expect(calls).toBe(1);
+    });
+
+    it('should respect expiration for wrapped sync functions', () => {
+      const cachePath = join(tempDir, 'sync-wrap-exp.json');
+      const cache = new Cachetta({ path: cachePath, duration: 1000 });
+      let calls = 0;
+      const fn = () => { calls++; return calls; };
+      const cached = cache.wrapSync(fn);
+
+      expect(cached()).toBe(1);
+      expect(cached()).toBe(1);
+      expect(calls).toBe(1);
+
+      setTimeOfFileSync(2000, cachePath);
+      expect(cached()).toBe(2);
+      expect(calls).toBe(2);
+    });
+
+    it('should respect condition for sync wrapping', () => {
+      const cache = new Cachetta({
+        path: join(tempDir, 'sync-cond.json'),
+        condition: (result) => result !== null,
+      });
+      let calls = 0;
+      const fn = () => {
+        calls++;
+        return calls <= 1 ? null : { data: calls };
+      };
+      const cached = cache.wrapSync(fn);
+
+      expect(cached()).toBeNull();
+      expect(calls).toBe(1);
+      expect(cached()).toEqual({ data: 2 });
+      expect(calls).toBe(2);
+      expect(cached()).toEqual({ data: 2 });
+      expect(calls).toBe(2);
+    });
+  });
+
+  describe('sync: stale-while-revalidate', () => {
+    it('should return stale data without background refresh', () => {
+      const cachePath = join(tempDir, 'sync-swr.json');
+      const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
+      let calls = 0;
+      const fn = () => { calls++; return { version: calls }; };
+      const cached = cache.wrapSync(fn);
+
+      expect(cached()).toEqual({ version: 1 });
+      expect(calls).toBe(1);
+
+      // Age the file past duration but within staleDuration
+      setTimeOfFileSync(2000, cachePath);
+      // Clear LRU so we hit disk
+      cache._lru?.clear();
+
+      expect(cached()).toEqual({ version: 1 }); // stale data returned
+      // In sync mode, no background refresh fires, so calls stays at 1
+      // (the stale data is returned directly)
+    });
+  });
+
+  describe('sync: invalidateSync', () => {
+    it('should delete cache file synchronously', () => {
+      const cachePath = join(tempDir, 'sync-inv.json');
+      const cache = new Cachetta({ path: cachePath });
+      writeCacheSync(cache, { data: 1 });
+      expect(readCacheSync(cache)).toEqual({ data: 1 });
+
+      cache.invalidateSync();
+      expect(readCacheSync(cache)).toBeNull();
+    });
+
+    it('clearSync should work as alias', () => {
+      const cachePath = join(tempDir, 'sync-clr.json');
+      const cache = new Cachetta({ path: cachePath });
+      writeCacheSync(cache, { data: 1 });
+      cache.clearSync();
+      expect(readCacheSync(cache)).toBeNull();
+    });
+  });
+
+  describe('sync: existsSync / ageSync / infoSync', () => {
+    it('existsSync should reflect file state', () => {
+      const cachePath = join(tempDir, 'sync-exists.json');
+      const cache = new Cachetta({ path: cachePath });
+
+      expect(cache.existsSync()).toBe(false);
+      writeCacheSync(cache, { data: 1 });
+      expect(cache.existsSync()).toBe(true);
+      cache.invalidateSync();
+      expect(cache.existsSync()).toBe(false);
+    });
+
+    it('ageSync should return time since write', () => {
+      const cachePath = join(tempDir, 'sync-age.json');
+      const cache = new Cachetta({ path: cachePath });
+
+      expect(cache.ageSync()).toBeNull();
+      writeCacheSync(cache, { data: 1 });
+      const ageMs = cache.ageSync();
+      expect(ageMs).toBeGreaterThanOrEqual(0);
+      expect(ageMs!).toBeLessThan(1000);
+    });
+
+    it('infoSync should return complete cache state', () => {
+      const cachePath = join(tempDir, 'sync-info.json');
+      const cache = new Cachetta({ path: cachePath, duration: 1000 });
+
+      let info = cache.infoSync();
+      expect(info.exists).toBe(false);
+      expect(info.expired).toBe(false);
+
+      writeCacheSync(cache, { data: 1 });
+      info = cache.infoSync();
+      expect(info.exists).toBe(true);
+      expect(info.expired).toBe(false);
+
+      setTimeOfFileSync(2000, cachePath);
+      info = cache.infoSync();
+      expect(info.exists).toBe(true);
+      expect(info.expired).toBe(true);
+    });
+  });
+
+  describe('sync: directory auto-creation', () => {
+    it('should create nested directories on sync write', () => {
+      const cachePath = join(tempDir, 'a', 'b', 'c', 'sync-data.json');
+      const cache = new Cachetta({ path: cachePath });
+      writeCacheSync(cache, { nested: true });
+      expect(readCacheSync(cache)).toEqual({ nested: true });
+    });
+  });
+
+  describe('sync: corrupt cache recovery', () => {
+    it('should return null for corrupt data', () => {
+      const cachePath = join(tempDir, 'sync-corrupt.json');
+      const cache = new Cachetta({ path: cachePath });
+      fsWriteFileSync(cachePath, '{ broken data !!!');
+      expect(readCacheSync(cache)).toBeNull();
+    });
+  });
+
+  describe('sync: path traversal rejection', () => {
+    it('should throw InvalidPathError for .. segments in readCacheSync', () => {
+      const cache = new Cachetta({ path: '../etc/passwd' });
+      expect(() => readCacheSync(cache)).toThrow(InvalidPathError);
+    });
+
+    it('should throw InvalidPathError for .. segments in writeCacheSync', () => {
+      const cache = new Cachetta({ path: join(tempDir, '../../escape.json') });
+      expect(() => writeCacheSync(cache, { bad: true })).toThrow(InvalidPathError);
+    });
+  });
+
+  describe('sync: LRU cache integration', () => {
+    it('should serve from LRU on second sync read', () => {
+      const cachePath = join(tempDir, 'sync-lru.json');
+      const cache = new Cachetta({ path: cachePath, lruSize: 5, duration: 60000 });
+
+      writeCacheSync(cache, { lru: true });
+      expect(readCacheSync(cache)).toEqual({ lru: true });
+
+      // Delete the file - LRU should still serve
+      fsUnlinkSync(cachePath);
+      expect(readCacheSync(cache)).toEqual({ lru: true });
     });
   });
 });

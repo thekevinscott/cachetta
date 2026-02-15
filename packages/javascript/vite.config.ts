@@ -15,7 +15,7 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      external: ['fs', 'path', 'util', 'crypto'],
+      external: ['fs', 'path', 'util', 'crypto', 'v8'],
     },
   },
   plugins: [
