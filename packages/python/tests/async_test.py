@@ -18,7 +18,6 @@ from cachetta import (
     async_read_stale_cache,
     async_write_cache,
     async_write_cache_ctx,
-    read_cache,
     write_cache,
 )
 from cachetta._sentinel import _LRU_MISS
@@ -347,7 +346,7 @@ def describe_lru_thread_safety():
                     # Mix of reads and writes
                     cache._lru_set(cache_path, {"i": i})
                     await asyncio.sleep(0)  # yield to event loop
-                    result = cache._lru_get(cache_path)
+                    cache._lru_get(cache_path)
                     # result might be _LRU_MISS if evicted, that's fine
                 except Exception as e:
                     errors.append(e)

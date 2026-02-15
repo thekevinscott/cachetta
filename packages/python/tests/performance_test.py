@@ -1,11 +1,9 @@
 import asyncio
 import json
 import tempfile
-from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
-from time import time
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch
 from cachetta._sentinel import _LRU_MISS
 
 import pytest
@@ -205,7 +203,7 @@ def describe_streaming_json():
             cache = Cachetta(path=str(cache_path))
 
             with patch("cachetta.read_cache.json.load", return_value={"streaming": True}) as mock_load:
-                with read_cache(cache) as data:
+                with read_cache(cache) as _data:
                     pass
                 mock_load.assert_called_once()
 
