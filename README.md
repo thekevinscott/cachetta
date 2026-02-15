@@ -1,32 +1,63 @@
 # Cachetta
 
-File-based JSON caching with the same API across JavaScript/TypeScript and Python. The name is a portmanteau of *cache* and *rosetta*.
+File-based caching with the same API across JavaScript/TypeScript and Python. The name is a portmanteau of *cache* and *rosetta*.
 
 Both implementations share identical concepts -- configuration, decorators, read/write primitives, LRU, stale-while-revalidate -- differing only where language conventions require it (e.g. `snake_case` vs `camelCase`, `timedelta` vs milliseconds).
 
-## Packages
+[Full documentation](https://thekevinscott.github.io/cachetta/)
 
-- [JavaScript/TypeScript](packages/javascript/) -- `pnpm add cachetta`
-- [Python](packages/python/) -- `uv add cachetta`
+## JavaScript / TypeScript
 
-## Feature Parity
+```bash
+pnpm add cachetta
+```
 
-| Feature | JavaScript/TypeScript | Python |
-|---|---|---|
-| File-based JSON cache | Yes | Yes |
-| Decorator / function wrapper | Yes | Yes |
-| Async support | Always async | Sync + async variants |
-| In-memory LRU layer | Yes | Yes (thread-safe) |
-| Stale-while-revalidate | Yes | Yes |
-| Conditional caching | Yes | Yes |
-| Auto cache keys (arg hashing) | Yes | Yes |
-| Dynamic path functions | Yes | Yes |
-| Cache inspection (exists/age/info) | Yes | Yes (sync + async) |
-| Cache invalidation | Yes | Yes (sync + async) |
-| Atomic writes | Yes | Yes |
-| Path traversal protection | Yes | Yes |
-| Prototype pollution protection | Yes | N/A |
-| `/` path operator | -- | Yes |
-| `skip_self` for method decorators | -- | Yes |
+```javascript
+import { Cachetta } from 'cachetta';
 
-See each package's README for installation, usage, and API details.
+const cache = new Cachetta({ path: './cache.json', duration: 60_000 });
+
+// As a wrapper
+const getData = cache(async () => {
+  return await fetchExpensiveData();
+});
+const result = await getData();
+
+// Or read/write directly
+import { readCache, writeCache } from 'cachetta';
+
+const data = await readCache(cache);
+if (!data) {
+  await writeCache(cache, await fetchExpensiveData());
+}
+```
+
+[JavaScript/TypeScript docs](https://thekevinscott.github.io/cachetta/javascript) | [Package README](packages/javascript/)
+
+## Python
+
+```bash
+uv add cachetta
+```
+
+```python
+from cachetta import Cachetta, read_cache, write_cache
+from datetime import timedelta
+
+cache = Cachetta(path='./cache.json', duration=timedelta(minutes=1))
+
+# As a decorator
+@cache
+def get_data():
+    return fetch_expensive_data()
+
+result = get_data()
+
+# Or read/write directly
+with read_cache(cache) as data:
+    if data is None:
+        data = fetch_expensive_data()
+        write_cache(cache, data)
+```
+
+[Python docs](https://thekevinscott.github.io/cachetta/python) | [Package README](packages/python/)
