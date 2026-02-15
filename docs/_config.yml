@@ -1,0 +1,20 @@
+title: Cachetta
+description: File-based caching with the same API across JavaScript/TypeScript and Python
+remote_theme: just-the-docs/just-the-docs
+url: https://thekevinscott.github.io
+baseurl: /cachetta
+
+color_scheme: light
+
+nav_enabled: true
+search_enabled: true
+
+aux_links:
+  GitHub: https://github.com/thekevinscott/cachetta
+  npm: https://www.npmjs.com/package/cachetta
+  PyPI: https://pypi.org/project/cachetta/
+
+footer_content: "MIT License"
+
+back_to_top: true
+back_to_top_text: "Back to top"
