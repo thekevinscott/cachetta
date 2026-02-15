@@ -25,9 +25,25 @@
     "test:unit:watch": "wireit",
     "test:integration": "wireit",
     "test:integration:watch": "wireit",
+    "lint": "wireit",
+    "typecheck": "wireit",
     "build": "wireit"
   },
   "wireit": {
+    "lint": {
+      "command": "eslint src",
+      "files": [
+        "./src/**/*.ts",
+        "./eslint.config.js"
+      ]
+    },
+    "typecheck": {
+      "command": "tsc --noEmit",
+      "files": [
+        "./src/**/*.ts",
+        "./tsconfig.json"
+      ]
+    },
     "test:unit": {
       "command": "vitest run -c vitest.config.unit.ts"
     },
@@ -61,13 +77,15 @@
     }
   },
   "devDependencies": {
-    "cachetta": "workspace:*",
+    "@eslint/js": "^9.39.2",
     "@types/node": "^22.10.0",
+    "cachetta": "workspace:*",
+    "eslint": "^9.39.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.55.0",
     "vite": "^6.0.0",
     "vite-plugin-dts": "^4.5.4",
     "vitest": "^2.1.6",
     "wireit": "^0.14.9"
-  },
-  "dependencies": {}
+  }
 }

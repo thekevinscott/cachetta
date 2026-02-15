@@ -1,0 +1,52 @@
+name: JS Lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/javascript/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/js-lint.yaml'
+  pull_request:
+    paths:
+      - 'packages/javascript/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/js-lint.yaml'
+
+env:
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Typecheck
+        working-directory: packages/javascript
+        run: pnpm typecheck
+
+      - name: Lint
+        working-directory: packages/javascript
+        run: pnpm lint
