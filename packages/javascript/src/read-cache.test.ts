@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { readCache, readStaleCache } from './read-cache.js';
-import type { CacheConfig } from './types.js';
+import { serialize } from 'v8';
+import { readCache, readCacheSync, readStaleCache, readStaleCacheSync } from './read-cache.js';
+import { writeCache, writeCacheSync } from './write-cache.js';
 import { Cachetta } from './Cachetta.js';
-import { CachettaError, InvalidPathError, UnsupportedFormatError } from './errors.js';
+import { CachettaError, InvalidPathError } from './errors.js';
 
 
 describe('readCache', () => {
@@ -21,16 +22,13 @@ describe('readCache', () => {
     vi.restoreAllMocks();
   });
 
-  it('should read JSON data from cache file', async () => {
+  it('should read data from cache file', async () => {
     const cachePath = join(tempDir, 'test-cache.json');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: true
-    });
+    const cache = new Cachetta({ path: cachePath, read: true });
     const testData = { key: 'value', number: 42 };
 
-    // Write the cache first
-    await fs.writeFile(cachePath, JSON.stringify(testData), 'utf8');
+    // Write the cache using v8.serialize
+    await fs.writeFile(cachePath, serialize(testData));
 
     const result = await readCache(cache);
     expect(result).toEqual(testData);
@@ -43,10 +41,7 @@ describe('readCache', () => {
 
   it('should return null when cache.read is false', async () => {
     const cachePath = join(tempDir, 'test-cache.json');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: false
-    });
+    const cache = new Cachetta({ path: cachePath, read: false });
 
     const result = await readCache(cache);
     expect(result).toBeNull();
@@ -54,10 +49,7 @@ describe('readCache', () => {
 
   it('should return null when cache file does not exist', async () => {
     const cachePath = join(tempDir, 'nonexistent-cache.json');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: true
-    });
+    const cache = new Cachetta({ path: cachePath, read: true });
 
     const result = await readCache(cache);
     expect(result).toBeNull();
@@ -71,44 +63,35 @@ describe('readCache', () => {
     });
     const testData = { dynamic: true };
 
-    // Write the cache first
-    await fs.writeFile(cachePath, JSON.stringify(testData), 'utf8');
+    await fs.writeFile(cachePath, serialize(testData));
 
     expect(await readCache(cache, 'dynamic')).toEqual(testData);
     expect(await readCache(cache, 'dynamic2')).toEqual(null);
   });
 
-  it('should return null for corrupt JSON', async () => {
+  it('should return null for corrupt data', async () => {
     const cachePath = join(tempDir, 'corrupt-cache.json');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: true
-    });
+    const cache = new Cachetta({ path: cachePath, read: true });
 
-    // Write corrupt JSON
-    await fs.writeFile(cachePath, '{ invalid json', 'utf8');
+    // Write invalid data (not v8 serialized)
+    await fs.writeFile(cachePath, '{ invalid data', 'utf8');
 
     const result = await readCache(cache);
     expect(result).toBeNull();
   });
 
-  it('should return null for unknown file extension when cache should not be used', async () => {
-    const cachePath = join(tempDir, 'test-cache.txt');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: true
-    });
-
-    const result = await readCache(cache);
-    expect(result).toBeNull();
+  it('should read any file extension', async () => {
+    for (const ext of ['.json', '.dat', '.txt', '.cache']) {
+      const cachePath = join(tempDir, `test${ext}`);
+      const cache = new Cachetta({ path: cachePath, read: true });
+      await fs.writeFile(cachePath, serialize({ ext }));
+      expect(await readCache(cache)).toEqual({ ext });
+    }
   });
 
   it('should handle complex nested objects', async () => {
     const cachePath = join(tempDir, 'complex-cache.json');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: true
-    });
+    const cache = new Cachetta({ path: cachePath, read: true });
     const testData = {
       string: 'hello',
       number: 123,
@@ -118,48 +101,58 @@ describe('readCache', () => {
       object: { nested: { deep: true } }
     };
 
-    // Write the cache first
-    await fs.writeFile(cachePath, JSON.stringify(testData), 'utf8');
+    await fs.writeFile(cachePath, serialize(testData));
 
     const result = await readCache(cache);
     expect(result).toEqual(testData);
   });
 
-  it('should throw UnsupportedFormatError for unknown file extension when cache should be used', async () => {
-    const cachePath = join(tempDir, 'test.unknown');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: true
-    });
-
-    // Create the file so it exists and shouldUseReadCache returns true
-    await fs.writeFile(cachePath, 'test content', 'utf8');
-
-    await expect(readCache(cache)).rejects.toThrow(UnsupportedFormatError);
-  });
-
   it('should reject paths with traversal segments', async () => {
-    const cache = new Cachetta({
-      path: '../etc/passwd',
-      read: true
-    });
+    const cache = new Cachetta({ path: '../etc/passwd', read: true });
 
     await expect(readCache(cache)).rejects.toThrow(InvalidPathError);
   });
+});
 
-  it('should strip __proto__ keys from parsed JSON', async () => {
-    const cachePath = join(tempDir, 'proto-cache.json');
-    const cache = new Cachetta({
-      path: cachePath,
-      read: true
-    });
+describe('readCacheSync', () => {
+  let tempDir: string;
 
-    // Write JSON with __proto__ key
-    await fs.writeFile(cachePath, '{"__proto__": {"polluted": true}, "safe": "value"}', 'utf8');
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp('cachetta-test-');
+    vi.spyOn(console, 'error').mockImplementation(() => { });
+  });
 
-    const result = await readCache<Record<string, unknown>>(cache);
-    expect(result).toEqual({ safe: 'value' });
-    expect(result).not.toHaveProperty('__proto__.polluted');
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('should read data synchronously', async () => {
+    const cachePath = join(tempDir, 'sync-read.json');
+    const cache = new Cachetta({ path: cachePath });
+    await fs.writeFile(cachePath, serialize({ sync: true }));
+    expect(readCacheSync(cache)).toEqual({ sync: true });
+  });
+
+  it('should return null for nonexistent file', () => {
+    const cache = new Cachetta({ path: '/tmp/claude/nonexistent-sync.json' });
+    expect(readCacheSync(cache)).toBeNull();
+  });
+
+  it('should return null for corrupt data', async () => {
+    const cachePath = join(tempDir, 'sync-corrupt.json');
+    const cache = new Cachetta({ path: cachePath });
+    await fs.writeFile(cachePath, 'not valid v8 data');
+    expect(readCacheSync(cache)).toBeNull();
+  });
+
+  it('should throw CachettaError for non-Cachetta input', () => {
+    expect(() => readCacheSync(null as any)).toThrow(CachettaError);
+  });
+
+  it('should reject paths with traversal segments', () => {
+    const cache = new Cachetta({ path: '../etc/passwd' });
+    expect(() => readCacheSync(cache)).toThrow(InvalidPathError);
   });
 });
 
@@ -176,16 +169,14 @@ describe('readStaleCache', () => {
 
   it('should return null when staleDuration is not set', async () => {
     const cachePath = join(tempDir, 'test.json');
-    await fs.writeFile(cachePath, '{"data":1}');
-
     const cache = new Cachetta({ path: cachePath, duration: 1000 });
+    // Write using writeCache so the file is v8-serialized
+    await writeCache(cache, { data: 1 });
     expect(await readStaleCache(cache)).toBeNull();
   });
 
   it('should return null when read is false', async () => {
     const cachePath = join(tempDir, 'test.json');
-    await fs.writeFile(cachePath, '{"data":1}');
-
     const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 5000, read: false });
     expect(await readStaleCache(cache)).toBeNull();
   });
@@ -197,32 +188,61 @@ describe('readStaleCache', () => {
 
   it('should return null when cache is still fresh (not expired)', async () => {
     const cachePath = join(tempDir, 'test.json');
-    await fs.writeFile(cachePath, '{"data":1}');
-
     const cache = new Cachetta({ path: cachePath, duration: 60000, staleDuration: 5000 });
+    await writeCache(cache, { data: 1 });
     expect(await readStaleCache(cache)).toBeNull();
   });
 
   it('should return data when cache is expired but within stale window', async () => {
     const cachePath = join(tempDir, 'test.json');
     const testData = { data: 'stale' };
-    await fs.writeFile(cachePath, JSON.stringify(testData));
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
+    await writeCache(cache, testData);
     // Set file time to 5 seconds ago (expired with 1s duration, within 30s stale window)
     const oldTime = new Date(Date.now() - 5000);
     await fs.utimes(cachePath, oldTime, oldTime);
 
-    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
     expect(await readStaleCache(cache)).toEqual(testData);
   });
 
   it('should return null when cache is past both duration and staleDuration', async () => {
     const cachePath = join(tempDir, 'test.json');
-    await fs.writeFile(cachePath, '{"data":1}');
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 5000 });
+    await writeCache(cache, { data: 1 });
     // Set file time to 60 seconds ago (past 1s duration + 5s stale window)
     const oldTime = new Date(Date.now() - 60000);
     await fs.utimes(cachePath, oldTime, oldTime);
 
-    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 5000 });
     expect(await readStaleCache(cache)).toBeNull();
+  });
+});
+
+describe('readStaleCacheSync', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp('cachetta-test-');
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('should return null when staleDuration is not set', () => {
+    const cachePath = join(tempDir, 'test.json');
+    const cache = new Cachetta({ path: cachePath, duration: 1000 });
+    writeCacheSync(cache, { data: 1 });
+    expect(readStaleCacheSync(cache)).toBeNull();
+  });
+
+  it('should return data when in stale window', async () => {
+    const cachePath = join(tempDir, 'test.json');
+    const testData = { data: 'stale-sync' };
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
+    writeCacheSync(cache, testData);
+    const oldTime = new Date(Date.now() - 5000);
+    await fs.utimes(cachePath, oldTime, oldTime);
+
+    expect(readStaleCacheSync(cache)).toEqual(testData);
   });
 });

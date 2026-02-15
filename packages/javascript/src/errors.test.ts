@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   CachettaError,
   InvalidPathError,
-  UnsupportedFormatError,
 } from './errors.js';
 
 describe('errors', () => {
@@ -19,12 +18,5 @@ describe('errors', () => {
     expect(err).toBeInstanceOf(CachettaError);
     expect(err.name).toBe('InvalidPathError');
     expect(err.message).toContain('path traversal');
-  });
-
-  it('UnsupportedFormatError', () => {
-    const err = new UnsupportedFormatError('xml');
-    expect(err).toBeInstanceOf(CachettaError);
-    expect(err.name).toBe('UnsupportedFormatError');
-    expect(err.message).toContain('xml');
   });
 });

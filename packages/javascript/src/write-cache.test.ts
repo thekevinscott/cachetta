@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { writeCache } from './write-cache.js';
+import { deserialize } from 'v8';
+import { writeCache, writeCacheSync } from './write-cache.js';
 import { Cachetta } from './Cachetta.js';
-import { InvalidPathError, UnsupportedFormatError } from './errors.js';
+import { InvalidPathError } from './errors.js';
 
 describe('writeCache', () => {
   let tempDir: string;
@@ -16,7 +17,7 @@ describe('writeCache', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it('should write JSON data to cache file', async () => {
+  it('should write data to cache file', async () => {
     const cachePath = join(tempDir, 'test-cache.json');
     const cache = new Cachetta({
       path: cachePath,
@@ -26,8 +27,8 @@ describe('writeCache', () => {
 
     await writeCache(cache, testData);
 
-    const writtenData = JSON.parse(await fs.readFile(cachePath, 'utf8'));
-    expect(writtenData).toEqual(testData);
+    const buffer = await fs.readFile(cachePath);
+    expect(deserialize(buffer)).toEqual(testData);
   });
 
   it('should create directory structure if it does not exist', async () => {
@@ -40,8 +41,8 @@ describe('writeCache', () => {
 
     await writeCache(cache, testData);
 
-    const writtenData = JSON.parse(await fs.readFile(cachePath, 'utf8'));
-    expect(writtenData).toEqual(testData);
+    const buffer = await fs.readFile(cachePath);
+    expect(deserialize(buffer)).toEqual(testData);
   });
 
   it('should handle function-based cache paths', async () => {
@@ -53,7 +54,8 @@ describe('writeCache', () => {
     const testData = { dynamic: true };
 
     await writeCache(cache, testData, 'dynamic');
-    expect(JSON.parse(await fs.readFile(cachePath, 'utf8'))).toEqual(testData);
+    const buffer = await fs.readFile(cachePath);
+    expect(deserialize(buffer)).toEqual(testData);
   });
 
   it('should not write when cache.write is false', async () => {
@@ -67,7 +69,7 @@ describe('writeCache', () => {
     await writeCache(cache, testData);
 
     // File should not exist
-    await expect(fs.readFile(cachePath, 'utf8')).rejects.toThrow();
+    await expect(fs.readFile(cachePath)).rejects.toThrow();
   });
 
   it('should not write when cache is null', async () => {
@@ -77,17 +79,17 @@ describe('writeCache', () => {
     await writeCache(null as unknown as Cachetta, testData);
 
     // File should not exist
-    await expect(fs.readFile(cachePath, 'utf8')).rejects.toThrow();
+    await expect(fs.readFile(cachePath)).rejects.toThrow();
   });
 
-  it('should throw UnsupportedFormatError for unknown file extension', async () => {
-    const cachePath = join(tempDir, 'test.unknown');
-    const cache = new Cachetta({
-      path: cachePath,
-      write: true
-    });
-
-    await expect(writeCache(cache, { key: 'value' })).rejects.toThrow(UnsupportedFormatError);
+  it('should write any file extension', async () => {
+    for (const ext of ['.json', '.dat', '.cache', '.xml', '.foo']) {
+      const cachePath = join(tempDir, `test${ext}`);
+      const cache = new Cachetta({ path: cachePath, write: true });
+      await writeCache(cache, { ext });
+      const buffer = await fs.readFile(cachePath);
+      expect(deserialize(buffer)).toEqual({ ext });
+    }
   });
 
   it('should reject paths with traversal segments', async () => {
@@ -110,8 +112,8 @@ describe('writeCache', () => {
     await writeCache(cache, testData);
 
     // Verify the final file exists and is valid
-    const writtenData = JSON.parse(await fs.readFile(cachePath, 'utf8'));
-    expect(writtenData).toEqual(testData);
+    const buffer = await fs.readFile(cachePath);
+    expect(deserialize(buffer)).toEqual(testData);
 
     // Verify no temp files left behind
     const files = await fs.readdir(tempDir);
@@ -136,7 +138,49 @@ describe('writeCache', () => {
 
     await writeCache(cache, testData);
 
-    const writtenData = JSON.parse(await fs.readFile(cachePath, 'utf8'));
-    expect(writtenData).toEqual(testData);
+    const buffer = await fs.readFile(cachePath);
+    expect(deserialize(buffer)).toEqual(testData);
+  });
+});
+
+describe('writeCacheSync', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp('cachetta-test-');
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('should write data synchronously', async () => {
+    const cachePath = join(tempDir, 'sync-test.json');
+    const cache = new Cachetta({ path: cachePath, write: true });
+    writeCacheSync(cache, { key: 'sync' });
+
+    const buffer = await fs.readFile(cachePath);
+    expect(deserialize(buffer)).toEqual({ key: 'sync' });
+  });
+
+  it('should create directory structure synchronously', async () => {
+    const cachePath = join(tempDir, 'a', 'b', 'sync-test.json');
+    const cache = new Cachetta({ path: cachePath, write: true });
+    writeCacheSync(cache, { nested: true });
+
+    const buffer = await fs.readFile(cachePath);
+    expect(deserialize(buffer)).toEqual({ nested: true });
+  });
+
+  it('should not write when cache.write is false', async () => {
+    const cachePath = join(tempDir, 'sync-no-write.json');
+    const cache = new Cachetta({ path: cachePath, write: false });
+    writeCacheSync(cache, { data: 1 });
+    await expect(fs.readFile(cachePath)).rejects.toThrow();
+  });
+
+  it('should reject paths with traversal segments', () => {
+    const cache = new Cachetta({ path: '../etc/evil.json', write: true });
+    expect(() => writeCacheSync(cache, { key: 'value' })).toThrow(InvalidPathError);
   });
 });

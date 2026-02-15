@@ -20,6 +20,7 @@ export interface CacheInfo {
 
 export type PathFn<T extends unknown[] = unknown[]> = (...args: T) => string;
 export type CachableFunction = (...args: unknown[]) => unknown;
+export type CachableFunctionSync = (...args: unknown[]) => unknown;
 
 export interface Logger {
   debug: (...messages: unknown[]) => void;
