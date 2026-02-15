@@ -1,8 +1,8 @@
 """Comprehensive integration tests using real file I/O, no mocks for core paths."""
 
 import asyncio
-import json
 import os
+import pickle
 import tempfile
 from datetime import timedelta
 from pathlib import Path
@@ -16,7 +16,6 @@ from cachetta import (
     CachettaError,
     CacheCorruptError,
     InvalidPathError,
-    UnsupportedFormatError,
     read_cache,
     write_cache,
     write_cache_ctx,
@@ -408,30 +407,26 @@ def describe_path_traversal():
 def describe_atomic_writes():
     def test_failed_write_preserves_original():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "atomic.json"
+            cache_path = Path(tmpdir) / "atomic.dat"
             cache = Cachetta(path=str(cache_path))
 
             write_cache(cache, {"version": 1})
 
-            class Unserializable:
-                pass
+            import _thread
+            with pytest.raises((TypeError, pickle.PicklingError)):
+                write_cache(cache, _thread.LockType())
 
-            with pytest.raises(TypeError):
-                write_cache(cache, Unserializable())
-
-            with open(cache_path) as f:
-                assert json.load(f) == {"version": 1}
+            with open(cache_path, "rb") as f:
+                assert pickle.load(f) == {"version": 1}
 
     def test_no_temp_files_left_after_failure():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "atomic.json"
+            cache_path = Path(tmpdir) / "atomic.dat"
             cache = Cachetta(path=str(cache_path))
 
-            class Unserializable:
-                pass
-
-            with pytest.raises(TypeError):
-                write_cache(cache, Unserializable())
+            import _thread
+            with pytest.raises((TypeError, pickle.PicklingError)):
+                write_cache(cache, _thread.LockType())
 
             remaining = list(Path(tmpdir).iterdir())
             assert len(remaining) == 0
@@ -576,25 +571,6 @@ def describe_exception_types():
     def test_cache_buddy_error_is_base():
         assert issubclass(CacheCorruptError, CachettaError)
         assert issubclass(InvalidPathError, CachettaError)
-        assert issubclass(UnsupportedFormatError, CachettaError)
-
-    def test_unsupported_format_error():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "data.xml"
-            cache = Cachetta(path=str(cache_path))
-            cache_path.touch()
-
-            with pytest.raises(UnsupportedFormatError):
-                with read_cache(cache):
-                    pass
-
-    def test_unsupported_format_error_on_write():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "data.xml"
-            cache = Cachetta(path=str(cache_path))
-
-            with pytest.raises(UnsupportedFormatError):
-                write_cache(cache, {"data": True})
 
 
 # -- Cachetta construction --
@@ -679,8 +655,9 @@ def describe_conditional_caching_integration():
 def describe_stale_revalidate_integration():
     def test_sync_stale_returns_stale_data():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "stale.json"
-            cache_path.write_text('{"version": 1}')
+            cache_path = Path(tmpdir) / "stale.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"version": 1}, f)
 
             old_time = time() - 5400  # 90 min ago
             os.utime(cache_path, (old_time, old_time))
@@ -704,8 +681,9 @@ def describe_stale_revalidate_integration():
 
     async def test_async_stale_triggers_background_refresh():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "stale-async.json"
-            cache_path.write_text('{"version": 1}')
+            cache_path = Path(tmpdir) / "stale-async.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"version": 1}, f)
 
             old_time = time() - 5400
             os.utime(cache_path, (old_time, old_time))
@@ -732,8 +710,8 @@ def describe_stale_revalidate_integration():
             assert call_count == 1
 
             # Verify the file was updated
-            with open(cache_path) as f:
-                assert json.load(f) == {"version": 2}
+            with open(cache_path, "rb") as f:
+                assert pickle.load(f) == {"version": 2}
 
 
 # -- write_cache_ctx context manager --

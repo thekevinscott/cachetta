@@ -1,11 +1,10 @@
 import asyncio
-import json
+import pickle
 from time import time
 from typing import Any, Generator
 from contextlib import asynccontextmanager, contextmanager
 from ._sentinel import _LRU_MISS
-from .exceptions import UnsupportedFormatError
-from .utils import should_use_read_cache, get_extension, get_last_updated, logger
+from .utils import should_use_read_cache, get_last_updated, logger
 
 
 @contextmanager
@@ -22,36 +21,30 @@ def read_cache(cache=None, *args, **kwargs) -> Generator[Any, None, None]:
             logger.debug("LRU cache hit for %s", cache_path)
             yield lru_result
         elif should_use_read_cache(cache, cache_path):
-            ext = get_extension(cache_path)
-
-            logger.debug("Using cache at %s for ext %s", cache_path, ext)
-            if ext == "json":
-                try:
-                    with open(cache_path, "r") as f:
-                        data = json.load(f)
-                    cache._lru_set(str(cache_path), data)
-                    yield data
-                    logger.debug("Used cache at %s", cache_path)
-                except FileNotFoundError:
-                    logger.debug("cache at %s does not exist", cache_path)
-                    yield None
-                except (json.JSONDecodeError, ValueError):
-                    logger.error("Corrupt JSON at %s", cache_path)
-                    yield None
-            else:
-                raise UnsupportedFormatError("Unknown extension: %s" % ext)
-
+            logger.debug("Using cache at %s", cache_path)
+            try:
+                with open(cache_path, "rb") as f:
+                    data = pickle.load(f)
+                cache._lru_set(str(cache_path), data)
+                yield data
+                logger.debug("Used cache at %s", cache_path)
+            except FileNotFoundError:
+                logger.debug("cache at %s does not exist", cache_path)
+                yield None
+            except Exception:
+                logger.error("Corrupt cache data at %s", cache_path)
+                yield None
         else:
             logger.debug("cache.read is false, skipping cache")
             yield None
 
 
-def _read_json_file(cache_path) -> Any:
-    """Read raw JSON data from a cache file, ignoring expiry. Returns None on any failure."""
+def _read_cache_file(cache_path) -> Any:
+    """Read raw data from a cache file, ignoring expiry. Returns None on any failure."""
     try:
-        with open(cache_path, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        with open(cache_path, "rb") as f:
+            return pickle.load(f)
+    except (FileNotFoundError, Exception):
         return None
 
 
@@ -75,29 +68,25 @@ def read_stale_cache(cache, *args, **kwargs) -> Any:
 
     if is_expired and is_within_stale:
         logger.debug("Returning stale cache for %s (age: %.1fs)", cache_path, age_seconds)
-        return _read_json_file(cache_path)
+        return _read_cache_file(cache_path)
 
     return None
 
 
 def _blocking_read_impl(cache, cache_path):
     """Extracted blocking disk I/O for thread delegation in async_read_cache."""
-    ext = get_extension(cache_path)
-    logger.debug("Using cache at %s for ext %s", cache_path, ext)
-    if ext == "json":
-        try:
-            with open(cache_path, "r") as f:
-                data = json.load(f)
-            cache._lru_set(str(cache_path), data)
-            return data
-        except FileNotFoundError:
-            logger.debug("cache at %s does not exist", cache_path)
-            return None
-        except (json.JSONDecodeError, ValueError):
-            logger.error("Corrupt JSON at %s", cache_path)
-            return None
-    else:
-        raise UnsupportedFormatError("Unknown extension: %s" % ext)
+    logger.debug("Using cache at %s", cache_path)
+    try:
+        with open(cache_path, "rb") as f:
+            data = pickle.load(f)
+        cache._lru_set(str(cache_path), data)
+        return data
+    except FileNotFoundError:
+        logger.debug("cache at %s does not exist", cache_path)
+        return None
+    except Exception:
+        logger.error("Corrupt cache data at %s", cache_path)
+        return None
 
 
 @asynccontextmanager

@@ -11,8 +11,3 @@ class CacheCorruptError(CachettaError):
 class InvalidPathError(CachettaError):
     """Raised when a cache path is invalid or contains traversal."""
     pass
-
-
-class UnsupportedFormatError(CachettaError):
-    """Raised when an unsupported file extension is encountered."""
-    pass

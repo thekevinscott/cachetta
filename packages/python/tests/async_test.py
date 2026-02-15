@@ -1,8 +1,8 @@
 """Tests for async I/O, async instance methods, LRU thread safety, and _created_dirs eviction."""
 
 import asyncio
-import json
 import os
+import pickle
 import tempfile
 import threading
 from collections import OrderedDict
@@ -99,8 +99,9 @@ def describe_async_decorated_functions():
 
     async def test_async_stale_while_revalidate():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "stale_async.json"
-            cache_path.write_text('{"version": 1}')
+            cache_path = Path(tmpdir) / "stale_async.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"version": 1}, f)
 
             old_time = time() - 5400  # 90 min ago
             os.utime(cache_path, (old_time, old_time))
@@ -126,8 +127,8 @@ def describe_async_decorated_functions():
             await asyncio.sleep(0.2)
             assert call_count == 1
 
-            with open(cache_path) as f:
-                assert json.load(f) == {"version": 2}
+            with open(cache_path, "rb") as f:
+                assert pickle.load(f) == {"version": 2}
 
 
 # -- Async read/write primitives --
@@ -182,8 +183,9 @@ def describe_async_read_write():
 
     async def test_async_read_stale_cache():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "stale.json"
-            cache_path.write_text('{"stale": true}')
+            cache_path = Path(tmpdir) / "stale.dat"
+            with open(cache_path, "wb") as f:
+                pickle.dump({"stale": True}, f)
 
             old_time = time() - 5400  # 90 min ago
             os.utime(cache_path, (old_time, old_time))

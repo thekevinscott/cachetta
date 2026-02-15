@@ -1,14 +1,12 @@
 import asyncio
-import json
 import os
+import pickle
 import tempfile
 import threading
 from collections import OrderedDict
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path  # noqa: F401 (used by tests via mock patching)
 from typing import Any, Generator
-from .exceptions import UnsupportedFormatError
-from .utils import get_extension
 
 # Track directories already created in this process to skip redundant mkdir calls.
 # Bounded OrderedDict with LRU eviction to prevent unbounded memory growth.
@@ -20,39 +18,33 @@ _created_dirs_lock = threading.Lock()
 def write_cache(cache, data: Any, *args, **kwargs) -> None:
     if cache and cache.write:
         cache_path = cache._get_path(*args, **kwargs)
-        ext = get_extension(cache_path)
 
-        if ext == "json":
-            # Ensure directory exists (skip if already created in this process)
-            parent = str(cache_path.parent.resolve())
-            with _created_dirs_lock:
-                if parent in _created_dirs:
-                    _created_dirs.move_to_end(parent)
-                else:
-                    cache_path.parent.mkdir(parents=True, exist_ok=True)
-                    _created_dirs[parent] = None
-                    if len(_created_dirs) > _CREATED_DIRS_MAX:
-                        _created_dirs.popitem(last=False)
+        # Ensure directory exists (skip if already created in this process)
+        parent = str(cache_path.parent.resolve())
+        with _created_dirs_lock:
+            if parent in _created_dirs:
+                _created_dirs.move_to_end(parent)
+            else:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                _created_dirs[parent] = None
+                if len(_created_dirs) > _CREATED_DIRS_MAX:
+                    _created_dirs.popitem(last=False)
 
-            fd, tmp_path = tempfile.mkstemp(
-                dir=cache_path.parent, suffix=".tmp"
-            )
+        fd, tmp_path = tempfile.mkstemp(
+            dir=cache_path.parent, suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "wb") as f:
+                pickle.dump(data, f)
+            os.replace(tmp_path, cache_path)
+            # Populate LRU on successful write
+            cache._lru_set(str(cache_path), data)
+        except BaseException:
             try:
-                with os.fdopen(fd, "w") as f:
-                    json.dump(data, f)
-                os.replace(tmp_path, cache_path)
-                # Populate LRU on successful write
-                cache._lru_set(str(cache_path), data)
-            except BaseException:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
-        else:
-            raise UnsupportedFormatError(
-                "Unknown extension for file: %s" % cache_path
-            )
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
 
 class _WriteCacheCollector:
