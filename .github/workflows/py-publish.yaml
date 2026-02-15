@@ -1,0 +1,136 @@
+name: Publish Python Release
+
+on:
+  workflow_call:
+    inputs:
+      bump_type:
+        description: 'Version bump type: patch or minor'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current version
+        id: current
+        run: |
+          latest_tag=$(git tag --sort=-v:refname | grep -E '^py/cachetta-v[0-9]' | head -n1)
+
+          if [ -z "$latest_tag" ]; then
+            echo "No tags found"
+            echo "version=0.0.0" >> $GITHUB_OUTPUT
+            echo "has_tags=false" >> $GITHUB_OUTPUT
+          else
+            echo "Latest tag: $latest_tag"
+            echo "version=${latest_tag#py/cachetta-v}" >> $GITHUB_OUTPUT
+            echo "has_tags=true" >> $GITHUB_OUTPUT
+
+            commits_since_tag=$(git rev-list ${latest_tag}..HEAD --count -- packages/python)
+            echo "commits_since_tag=$commits_since_tag" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for changes (patch only)
+        if: inputs.bump_type == 'patch' && steps.current.outputs.has_tags == 'true'
+        id: check_changes
+        run: |
+          if [ "${{ steps.current.outputs.commits_since_tag }}" -eq 0 ]; then
+            echo "No new commits since last tag, skipping release"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found ${{ steps.current.outputs.commits_since_tag }} commits since last tag"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate new version
+        id: version
+        run: |
+          current="${{ steps.current.outputs.version }}"
+          IFS='.' read -r major minor patch <<< "$current"
+
+          if [ "${{ inputs.bump_type }}" == "minor" ]; then
+            new_version="${major}.$((minor + 1)).0"
+          else
+            new_version="${major}.${minor}.$((patch + 1))"
+          fi
+
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+          echo "New version will be: $new_version"
+
+      - name: Check if tag exists
+        id: tag_check
+        run: |
+          if git ls-remote --tags origin | grep -q "refs/tags/py/cachetta-v${{ steps.version.outputs.new_version }}$"; then
+            echo "Tag py/cachetta-v${{ steps.version.outputs.new_version }} already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine if release should proceed
+        id: should_release
+        run: |
+          if [ "${{ steps.tag_check.outputs.exists }}" == "true" ]; then
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "${{ inputs.bump_type }}" == "patch" ] && [ "${{ steps.current.outputs.has_tags }}" == "true" ]; then
+            if [ "${{ steps.check_changes.outputs.should_release }}" == "false" ]; then
+              echo "proceed=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+      - name: Update pyproject.toml version
+        if: steps.should_release.outputs.proceed == 'true'
+        run: |
+          current_version=$(grep '^version = ' packages/python/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          if [ "$current_version" != "${{ steps.version.outputs.new_version }}" ]; then
+            sed -i 's/^version = .*/version = "${{ steps.version.outputs.new_version }}"/' packages/python/pyproject.toml
+          else
+            echo "pyproject.toml already at ${{ steps.version.outputs.new_version }}, skipping"
+          fi
+
+      - name: Commit version bump
+        if: steps.should_release.outputs.proceed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/python/pyproject.toml
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "chore(py): bump to ${{ steps.version.outputs.new_version }} [skip-version]" && git push)
+
+      - name: Create and push tag
+        if: steps.should_release.outputs.proceed == 'true'
+        id: tag
+        run: |
+          git tag -a "py/cachetta-v${{ steps.version.outputs.new_version }}" -m "Release py/cachetta-v${{ steps.version.outputs.new_version }}"
+          git push origin "py/cachetta-v${{ steps.version.outputs.new_version }}"
+          echo "created=true" >> $GITHUB_OUTPUT
+
+      - name: Install uv
+        if: steps.tag.outputs.created == 'true'
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build package
+        if: steps.tag.outputs.created == 'true'
+        working-directory: packages/python
+        run: uv build
+
+      - name: Publish to PyPI
+        if: steps.tag.outputs.created == 'true'
+        working-directory: packages/python
+        run: uv publish --trusted-publishing always
+
+      - name: Rollback tag on failure
+        if: failure() && steps.tag.outputs.created == 'true'
+        run: git push --delete origin "py/cachetta-v${{ steps.version.outputs.new_version }}"

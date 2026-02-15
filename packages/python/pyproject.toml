@@ -5,7 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cachetta"
 version = "0.5.0"
+description = "File-based JSON caching for Python"
 requires-python = ">= 3.12"
+license = "MIT"
+readme = "README.md"
+authors = [{ name = "Kevin Scott" }]
 
 dependencies = []
 
@@ -19,16 +23,16 @@ log_level = "INFO"
 now = true
 clear = true
 delay = 0.0
-runner = ".venv/bin/pytest"
+runner = "pytest"
 runner_args = []
 patterns = ["*.py"]
 ignore_patterns = []
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.4",
-    "pytest-asyncio>=0.25.3",
-    "pytest-describe>=2.2.0",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-describe>=3.1.0",
     "pytest-watcher>=0.4.3",
 ]
 
@@ -37,10 +41,4 @@ dev = [
 packages = { find = { where = ["src"] } }
 package-dir = {"" = "src"}
 
-[tool.uv]
-dev-dependencies = [
-    "pytest>=9.0.2",
-    "pytest-asyncio>=1.3.0",
-    "pytest-describe>=3.1.0",
-]
 
