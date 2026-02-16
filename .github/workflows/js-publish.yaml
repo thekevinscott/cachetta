@@ -14,7 +14,6 @@ jobs:
     permissions:
       contents: write
       id-token: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -92,38 +91,12 @@ jobs:
 
           echo "proceed=true" >> $GITHUB_OUTPUT
 
-      - name: Update package.json version
-        if: steps.should_release.outputs.proceed == 'true'
-        working-directory: packages/javascript
-        run: |
-          current_pkg_version=$(node -p "require('./package.json').version")
-          if [ "$current_pkg_version" != "${{ steps.version.outputs.new_version }}" ]; then
-            npm version ${{ steps.version.outputs.new_version }} --no-git-tag-version
-          else
-            echo "package.json already at ${{ steps.version.outputs.new_version }}, skipping"
-          fi
-
-      - name: Create version bump PR
-        if: steps.should_release.outputs.proceed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          branch="release/js-v${{ steps.version.outputs.new_version }}"
-          git checkout -b "$branch"
-          git add packages/javascript/package.json
-          git diff --cached --quiet && exit 0
-          git commit -m "chore(js): bump to ${{ steps.version.outputs.new_version }} [skip-version]"
-          git push origin "$branch"
-          gh pr create --title "chore(js): bump to v${{ steps.version.outputs.new_version }}" \
-            --body "Automated version bump from publish workflow" --base main
-          gh pr merge --auto --squash
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Create and push tag
         if: steps.should_release.outputs.proceed == 'true'
         id: tag
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "js/cachetta-v${{ steps.version.outputs.new_version }}" -m "Release js/cachetta-v${{ steps.version.outputs.new_version }}"
           git push origin "js/cachetta-v${{ steps.version.outputs.new_version }}"
           echo "created=true" >> $GITHUB_OUTPUT
