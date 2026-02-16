@@ -6,6 +6,7 @@ from .exceptions import (
     CacheCorruptError,
     InvalidPathError,
 )
+from .safe_pickle import UnsafePickleError
 
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "CachettaError",
     "CacheCorruptError",
     "InvalidPathError",
+    "UnsafePickleError",
 ]
