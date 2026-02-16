@@ -1,9 +1,9 @@
 import asyncio
-import pickle
 from time import time
 from typing import Any, Generator
 from contextlib import asynccontextmanager, contextmanager
 from ._sentinel import _LRU_MISS
+from .safe_pickle import safe_load, UnsafePickleError
 from .utils import should_use_read_cache, get_last_updated, logger
 
 
@@ -24,12 +24,15 @@ def read_cache(cache=None, *args, **kwargs) -> Generator[Any, None, None]:
             logger.debug("Using cache at %s", cache_path)
             try:
                 with open(cache_path, "rb") as f:
-                    data = pickle.load(f)
+                    data = safe_load(f, cache.allowed_pickle_types)
                 cache._lru_set(str(cache_path), data)
                 yield data
                 logger.debug("Used cache at %s", cache_path)
             except FileNotFoundError:
                 logger.debug("cache at %s does not exist", cache_path)
+                yield None
+            except UnsafePickleError:
+                logger.warning("Blocked unsafe pickle type at %s", cache_path)
                 yield None
             except Exception:
                 logger.error("Corrupt cache data at %s", cache_path)
@@ -39,11 +42,14 @@ def read_cache(cache=None, *args, **kwargs) -> Generator[Any, None, None]:
             yield None
 
 
-def _read_cache_file(cache_path) -> Any:
+def _read_cache_file(cache_path, allowed_types=None) -> Any:
     """Read raw data from a cache file, ignoring expiry. Returns None on any failure."""
     try:
         with open(cache_path, "rb") as f:
-            return pickle.load(f)
+            return safe_load(f, allowed_types)
+    except UnsafePickleError:
+        logger.warning("Blocked unsafe pickle type at %s", cache_path)
+        return None
     except (FileNotFoundError, Exception):
         return None
 
@@ -68,7 +74,7 @@ def read_stale_cache(cache, *args, **kwargs) -> Any:
 
     if is_expired and is_within_stale:
         logger.debug("Returning stale cache for %s (age: %.1fs)", cache_path, age_seconds)
-        return _read_cache_file(cache_path)
+        return _read_cache_file(cache_path, cache.allowed_pickle_types)
 
     return None
 
@@ -78,11 +84,14 @@ def _blocking_read_impl(cache, cache_path):
     logger.debug("Using cache at %s", cache_path)
     try:
         with open(cache_path, "rb") as f:
-            data = pickle.load(f)
+            data = safe_load(f, cache.allowed_pickle_types)
         cache._lru_set(str(cache_path), data)
         return data
     except FileNotFoundError:
         logger.debug("cache at %s does not exist", cache_path)
+        return None
+    except UnsafePickleError:
+        logger.warning("Blocked unsafe pickle type at %s", cache_path)
         return None
     except Exception:
         logger.error("Corrupt cache data at %s", cache_path)

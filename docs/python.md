@@ -257,6 +257,42 @@ class DataService:
         return fetch_user(user_id)
 ```
 
+## Pickle Security
+
+Cachetta uses a restricted unpickler that only deserializes known-safe types. Raw `pickle.load()` allows arbitrary code execution from tampered cache files -- the restricted unpickler blocks this by default.
+
+### Default safe types
+
+Primitives (`int`, `float`, `str`, `bytes`, `bool`, `None`, `list`, `dict`, `tuple`), `set`, `frozenset`, `complex`, `bytearray`, `range`, `slice`, `datetime` (`datetime`, `date`, `time`, `timedelta`, `timezone`), `Decimal`, `UUID`, `OrderedDict`, `defaultdict`, `deque`, and `pathlib` paths.
+
+### Extending the allowlist
+
+If you cache custom types (dataclasses, named tuples, etc.), add them to `allowed_pickle_types`:
+
+```python
+from cachetta import Cachetta
+
+@dataclass
+class UserProfile:
+    name: str
+    score: float
+
+cache = Cachetta(
+    path='./cache.dat',
+    allowed_pickle_types={UserProfile},
+)
+```
+
+Custom types are merged with the defaults -- you don't lose the built-in safe types.
+
+### Error behavior
+
+When a cache file contains a blocked type, `read_cache` logs a warning and yields `None`, the same as for corrupt data. The `UnsafePickleError` exception is available if you need to catch it explicitly:
+
+```python
+from cachetta import UnsafePickleError
+```
+
 ## Error Handling
 
 Cachetta gracefully handles corrupt cache files by yielding `None`:
@@ -291,3 +327,4 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 | `condition` | `Callable` | `None` | Predicate to decide whether to cache |
 | `stale_duration` | `timedelta` | `None` | Time past expiry to serve stale data |
 | `skip_self` | `bool` | `False` | Exclude `self` from cache key hashing |
+| `allowed_pickle_types` | `set[type]` | `None` | Additional types to allow during deserialization |

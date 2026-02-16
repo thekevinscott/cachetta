@@ -193,8 +193,8 @@ def describe_eafp_get_last_updated():
 
 
 def describe_pickle_loading():
-    def test_uses_pickle_load():
-        """read_cache should use pickle.load(f) for deserialization."""
+    def test_uses_safe_load():
+        """read_cache should use safe_load(f) for deserialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "test.dat"
             with open(cache_path, "wb") as f:
@@ -202,7 +202,7 @@ def describe_pickle_loading():
 
             cache = Cachetta(path=str(cache_path))
 
-            with patch("cachetta.read_cache.pickle.load", return_value={"streaming": True}) as mock_load:
+            with patch("cachetta.read_cache.safe_load", return_value={"streaming": True}) as mock_load:
                 with read_cache(cache) as _data:
                     pass
                 mock_load.assert_called_once()
