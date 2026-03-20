@@ -16,6 +16,7 @@ dependencies = []
 Homepage = "https://github.com/thekevinscott/cachetta"
 Repository = "https://github.com/thekevinscott/cachetta"
 Documentation = "https://github.com/thekevinscott/cachetta/tree/main/packages/python"
+Issues = "https://github.com/thekevinscott/cachetta/issues"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
