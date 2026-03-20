@@ -1,6 +1,6 @@
 # Cachetta for Python
 
-File-based JSON caching for Python. Part of the [Cachetta](../../README.md) project, which provides the same caching API in both Python and JS/TS -- learn it once, use it in either language.
+File-based caching for Python. Part of the [Cachetta](https://github.com/thekevinscott/cachetta) project, which provides the same caching API in both Python and JS/TS -- learn it once, use it in either language.
 
 ## Install
 
@@ -11,7 +11,7 @@ uv add cachetta
 ## Features
 
 - **Local File Storage**: Supports local files with automatic directory creation
-- **JSON Serialization**: JSON-based caching for portable, human-readable data
+- **Pickle Serialization**: Binary caching via pickle with restricted deserialization for safety
 - **Async Support**: Non-blocking async I/O for async functions, sync support for sync functions
 - **Automatic Expiration**: Cache expiration based on file modification time
 - **In-Memory LRU**: Optional in-memory LRU layer for fast repeated access
@@ -366,4 +366,4 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 - **Default duration**: 7 days (`timedelta(days=7)`)
 - **Default read**: `True`
 - **Default write**: `True`
-- **Supported format**: JSON (`.json`)
+- **Serialization**: pickle (binary)
