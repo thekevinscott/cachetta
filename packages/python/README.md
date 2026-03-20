@@ -36,7 +36,7 @@ from cachetta import Cachetta
 cache = Cachetta(
   read=True, # allow reading from local caches
   write=True, # allow writing to local caches
-  path='./cache.json', # specify path to cache file
+  path='./cache/data', # specify path to cache file
   duration=timedelta(days=1), # specify length of cache. Uses modified date on local file
 )
 ```
@@ -69,7 +69,7 @@ cache = Cachetta(
 
 def get_data():
   # Use the / operator to specify sub-paths
-  with read_cache(cache / 'my-data.json') as cached_data:
+  with read_cache(cache / 'my-data') as cached_data:
     ...
 ```
 
@@ -88,6 +88,58 @@ new_cache = cache.copy(
 
 **Note**: The `copy` method is the intended public API for creating variations of cache configurations. It creates a new `Cachetta` instance with the specified overrides while preserving the original configuration.
 
+### Configuration Inheritance
+
+Both `/` and `copy()` propagate all configuration from the parent cache. This means settings like `read`, `write`, `duration`, `lru_size`, `condition`, and `stale_duration` carry forward to child caches:
+
+```python
+# Disable reads globally -- useful for forcing fresh data during development
+cache = Cachetta(path='./cache', read=False, duration=timedelta(hours=1))
+
+users_cache = cache / 'users'       # inherits read=False, duration=1h
+posts_cache = cache / 'posts'       # inherits read=False, duration=1h
+```
+
+To override an inherited setting on a specific sub-cache, use `copy()`:
+
+```python
+# Re-enable reads just for the users sub-cache
+users_cache = (cache / 'users').copy(read=True)
+```
+
+### Root Cache with Namespaces
+
+In real projects, the recommended pattern is to create a single root cache object with shared configuration, then derive sub-caches for different concerns using `/`:
+
+```python
+from datetime import timedelta
+from cachetta import Cachetta
+
+# Root cache: shared config for the whole app
+cache = Cachetta(
+    path='./cache',
+    duration=timedelta(hours=6),
+    lru_size=50,
+)
+
+# Sub-namespaces
+users_cache = cache / 'users'
+api_cache = cache / 'api-responses'
+```
+
+To decorate functions under a namespace, use `path=lambda` for full control over cache file paths. This is especially important when the decorated function takes arguments:
+
+```python
+@(cache / 'users')(path=lambda user_id: cache.path / 'users' / f'{user_id}')
+def get_user(user_id: int):
+    return fetch_user(user_id)
+
+get_user(1)   # cached at ./cache/users/1
+get_user(2)   # cached at ./cache/users/2
+```
+
+Without `path=lambda`, auto-hashing generates opaque filenames (see [Auto Cache Keys](#auto-cache-keys) below). The `path=lambda` approach gives you readable, inspectable cache paths.
+
 ### Decorators
 
 You can use `Cachetta` as a decorator:
@@ -96,7 +148,7 @@ You can use `Cachetta` as a decorator:
 import time
 from cachetta import Cachetta
 
-@Cachetta(path='/my-cache.json')
+@Cachetta(path='/my-cache')
 def get_data():
   parts = []
   for i in range(10):
@@ -112,7 +164,7 @@ You can also use a specific cache object as a decorator:
 import time
 from cachetta import Cachetta
 
-cache = Cachetta(path='/my-cache.json')
+cache = Cachetta(path='/my-cache')
 
 @cache
 def get_data():
@@ -130,7 +182,7 @@ Or with arguments:
 import time
 from cachetta import Cachetta
 
-cache = Cachetta(path='/my-cache.json')
+cache = Cachetta(path='/my-cache')
 
 @cache(duration=timedelta(hours=1))
 def get_data():
@@ -150,7 +202,7 @@ Cachetta works seamlessly with async functions. When decorating an async functio
 import asyncio
 from cachetta import Cachetta
 
-@Cachetta(path='./async-cache.json')
+@Cachetta(path='./async-cache')
 async def get_async_data():
     await asyncio.sleep(2)
     return {"status": "success", "data": [1, 2, 3]}
@@ -179,13 +231,17 @@ async def get_data():
 When a decorated function receives arguments, Cachetta automatically generates unique cache paths by hashing the arguments:
 
 ```python
-@Cachetta(path='./cache/users.json')
+@Cachetta(path='./cache/users')
 def get_user(user_id: int):
     return fetch_user(user_id)
 
-get_user(1)   # cached at ./cache/users-<hash1>.json
-get_user(2)   # cached at ./cache/users-<hash2>.json
+get_user(1)   # cached at ./cache/users-<hash1>  (no extension)
+get_user(2)   # cached at ./cache/users-<hash2>
 ```
+
+The hash is a truncated SHA-256 of the JSON-serialized arguments. Each unique combination of arguments gets its own cache file.
+
+**Note on extensionless paths**: When the path has no file extension (e.g., `./cache/users` rather than `./cache/users.json`), auto-hashed files are created as siblings with a hyphenated hash suffix, not inside a subdirectory. For example, `./cache/users-a1b2c3d4` rather than `./cache/users/a1b2c3d4`. If you need subdirectory-based organization, use `path=lambda` (see [Dynamic Cache Paths](#dynamic-cache-paths)). See [#16](https://github.com/thekevinscott/cachetta/issues/16) for discussion of this behavior.
 
 ### In-Memory LRU
 
@@ -193,7 +249,7 @@ Add an in-memory LRU layer that is checked before hitting disk:
 
 ```python
 cache = Cachetta(
-    path='./cache.json',
+    path='./cache',
     lru_size=100,  # keep up to 100 entries in memory
 )
 ```
@@ -206,7 +262,7 @@ Cache results only when a condition function returns `True`:
 
 ```python
 cache = Cachetta(
-    path='./cache.json',
+    path='./cache',
     condition=lambda result: result is not None,  # don't cache None
 )
 ```
@@ -217,7 +273,7 @@ Return expired (stale) data immediately while refreshing the cache in the backgr
 
 ```python
 cache = Cachetta(
-    path='./cache.json',
+    path='./cache',
     duration=timedelta(hours=1),
     stale_duration=timedelta(minutes=30),  # serve stale data up to 30min past expiry
 )
@@ -228,7 +284,7 @@ cache = Cachetta(
 Delete cache files on disk:
 
 ```python
-cache = Cachetta(path='./cache.json')
+cache = Cachetta(path='./cache/data')
 
 cache.invalidate()  # or cache.clear()
 
@@ -245,7 +301,7 @@ await cache.aclear()
 Query cache state without reading the cached data:
 
 ```python
-cache = Cachetta(path='./cache.json')
+cache = Cachetta(path='./cache/data')
 
 cache.exists()          # True if the cache file exists
 cache.age()             # timedelta or None
@@ -263,7 +319,7 @@ You can specify a function for defining the path as well:
 
 ```python
 def get_cache_path(n: int):
-  return f"./cache/{n}.json"
+  return f"./cache/{n}"
 
 @Cachetta(path=get_cache_path)
 def foo(n: int):
@@ -280,7 +336,7 @@ Or, using a pre-existing cache object:
 ```python
 cache = Cachetta(path='./cache')
 def get_cache_path(n: int):
-  return cache.path / f"{n}.json"
+  return cache.path / str(n)
 
 @cache.copy(path=get_cache_path)
 def foo(n: int):
@@ -299,7 +355,7 @@ If you're not using decorators, you can wrap functions manually:
 ```python
 from cachetta import Cachetta
 
-cache = Cachetta(path='./my-cache.json')
+cache = Cachetta(path='./my-cache')
 
 def get_data():
   parts = []
@@ -337,7 +393,7 @@ Cachetta gracefully handles corrupt cache files:
 ```python
 from cachetta import read_cache, Cachetta
 
-cache = Cachetta(path='./corrupt-cache.json')
+cache = Cachetta(path='./corrupt-cache')
 
 # If the cache file is corrupt, read_cache will yield None
 with read_cache(cache) as data:
