@@ -5,13 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cachetta"
 version = "0.5.0"
-description = "File-based JSON caching for Python"
+description = "File-based caching for Python"
 requires-python = ">= 3.12"
 license = "MIT"
 readme = "README.md"
 authors = [{ name = "Kevin Scott" }]
-
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/thekevinscott/cachetta"
+Repository = "https://github.com/thekevinscott/cachetta"
+Documentation = "https://github.com/thekevinscott/cachetta/tree/main/packages/python"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
