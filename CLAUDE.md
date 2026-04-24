@@ -11,6 +11,18 @@
 - Don't add code that isn't used until a future PR
 - Every PR must include tests for changed behavior
 
+### Changelogs & Migrations
+Each package owns its own `CHANGELOG.md` and `MIGRATIONS.md` (`packages/javascript/`, `packages/python/`). Packages release independently, so these files never share content across languages.
+
+- **CHANGELOG.md** — follows [Keep a Changelog](https://keepachangelog.com/) (Added / Changed / Deprecated / Removed / Fixed). Every PR that changes a public-facing API **must** add an entry under `## [Unreleased]` in the affected package. Scope is *any* observable change — new options, renamed exports, altered defaults, tweaked error messages, changed exit codes, etc. We are not strictly following semver, so the changelog is the authoritative record of what consumers will notice. **CI enforces this**: a PR that modifies package source without touching its CHANGELOG will fail unless labeled `skip-changelog`.
+- **MIGRATIONS.md** — required for breaking changes only. Each entry is headed by the version bump (e.g. `## v1.x → v2.0`) and **must** include all five sections below. Omit a section only if it truly has no content, and explicitly write "None." so reviewers know it wasn't forgotten.
+  1. **Summary** — one paragraph: what broke and why.
+  2. **Required changes** — table of before/after snippets for config, CLI, action inputs.
+  3. **Deprecations removed** — anything previously warned about that's now gone.
+  4. **Behavior changes without code changes** — same API, different runtime behavior (tag format, exit codes, etc.).
+  5. **Verification** — how a consumer confirms the upgrade worked (dry-run command, expected output).
+- `MIGRATIONS.md` is the source of truth. The docs site auto-pulls it during the Jekyll build — do not hand-edit migration content under `docs/`.
+
 ## Project Structure
 - `packages/javascript/` - TypeScript implementation (npm: `cachetta`)
 - `packages/python/` - Python implementation (PyPI: `cachetta`)
