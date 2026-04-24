@@ -14,14 +14,20 @@
 ### Changelogs & Migrations
 Each package owns its own `CHANGELOG.md` and `MIGRATIONS.md` (`packages/javascript/`, `packages/python/`). Packages release independently, so these files never share content across languages.
 
-- **CHANGELOG.md** — follows [Keep a Changelog](https://keepachangelog.com/) (Added / Changed / Deprecated / Removed / Fixed). **Every PR must add an entry under `## [Unreleased]` in the affected package's CHANGELOG.** Scope is *any* observable change — new options, renamed exports, altered defaults, tweaked error messages, changed exit codes, etc. We are not strictly following semver, so the changelog is the authoritative record of what consumers will notice. **CI enforces this by default.** To waive the requirement, apply the `skip-changelog` label — use only for changes with no consumer-visible effect (internal refactors, CI/tooling tweaks, test-only edits, doc-only edits). Edits to `MIGRATIONS.md` alone do not trigger the requirement.
+- **CHANGELOG.md** — follows [Keep a Changelog](https://keepachangelog.com/) (Added / Changed / Deprecated / Removed / Fixed). **Every PR must add an entry under `## [Unreleased]` in the affected package's CHANGELOG.** Scope is *any* observable change — new options, renamed exports, altered defaults, tweaked error messages, changed exit codes, etc. We are not strictly following semver, so the changelog is the authoritative record of what consumers will notice. **CI enforces this by default.** To waive the requirement, add a `Skip-Changelog: <reason>` trailer to any commit in the PR — use only for changes with no consumer-visible effect (internal refactors, CI/tooling tweaks, test-only edits, doc-only edits). The trailer value is the justification, recorded in git for reviewers and future readers. Edits to `MIGRATIONS.md` alone do not trigger the requirement.
 - **MIGRATIONS.md** — required for breaking changes only. Each entry is headed by the version bump (e.g. `## v1.x → v2.0`) and **must** include all five sections below. Omit a section only if it truly has no content, and explicitly write "None." so reviewers know it wasn't forgotten.
   1. **Summary** — one paragraph: what broke and why.
   2. **Required changes** — table of before/after snippets for config, CLI, action inputs.
   3. **Deprecations removed** — anything previously warned about that's now gone.
   4. **Behavior changes without code changes** — same API, different runtime behavior (tag format, exit codes, etc.).
   5. **Verification** — how a consumer confirms the upgrade worked (dry-run command, expected output).
-- Apply the `breaking-change` label on PRs that ship a breaking change — CI will require the affected package's `MIGRATIONS.md` to be updated. `skip-changelog` and `breaking-change` are mutually exclusive.
+- For breaking changes, add a `Breaking-Change: <description>` trailer to any commit in the PR; CI will then require the affected package's `MIGRATIONS.md` to be updated. The `Skip-Changelog:` and `Breaking-Change:` trailers are mutually exclusive.
+- Trailers go at the bottom of a commit message, separated from the body by a blank line. Example:
+  ```
+  refactor: extract internal hash helper
+
+  Skip-Changelog: pure rename of a non-exported function
+  ```
 - `MIGRATIONS.md` is the source of truth. The docs site auto-pulls it during the Jekyll build — do not hand-edit migration content under `docs/`.
 
 ## Project Structure
