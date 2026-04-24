@@ -12,7 +12,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require CHANGELOG entry for changed packages
+      - name: Require CHANGELOG/MIGRATIONS entries for changed packages
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -20,7 +20,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          SKIP=0
+          BREAKING=0
           if echo "$LABELS" | grep -q '"skip-changelog"'; then
+            SKIP=1
+          fi
+          if echo "$LABELS" | grep -q '"breaking-change"'; then
+            BREAKING=1
+          fi
+
+          if [ "$SKIP" = "1" ] && [ "$BREAKING" = "1" ]; then
+            echo "::error::Labels 'skip-changelog' and 'breaking-change' are mutually exclusive."
+            exit 1
+          fi
+
+          if [ "$SKIP" = "1" ]; then
             echo "skip-changelog label present — skipping."
             exit 0
           fi
@@ -32,12 +46,27 @@ jobs:
 
           FAIL=0
           for pkg in javascript python; do
-            if echo "$CHANGED" | grep -qE "^packages/$pkg/"; then
-              if ! echo "$CHANGED" | grep -qE "^packages/$pkg/CHANGELOG\.md$"; then
-                echo "::error::PR modifies packages/$pkg/ but does not update packages/$pkg/CHANGELOG.md. Add an entry under '## [Unreleased]' or apply the 'skip-changelog' label."
-                FAIL=1
+            # A package is "touched" if any file under packages/<pkg>/ changed,
+            # excluding MIGRATIONS.md — editing a migration guide on its own
+            # shouldn't force a new CHANGELOG entry.
+            TOUCHED=$(echo "$CHANGED" | grep -E "^packages/$pkg/" | grep -vE "^packages/$pkg/MIGRATIONS\.md$" || true)
+            if [ -z "$TOUCHED" ]; then
+              continue
+            fi
+
+            if echo "$CHANGED" | grep -qE "^packages/$pkg/CHANGELOG\.md$"; then
+              echo "OK: packages/$pkg/CHANGELOG.md updated."
+            else
+              echo "::error::PR modifies packages/$pkg/ but does not update packages/$pkg/CHANGELOG.md. Add an entry under '## [Unreleased]' or apply the 'skip-changelog' label."
+              FAIL=1
+            fi
+
+            if [ "$BREAKING" = "1" ]; then
+              if echo "$CHANGED" | grep -qE "^packages/$pkg/MIGRATIONS\.md$"; then
+                echo "OK: packages/$pkg/MIGRATIONS.md updated."
               else
-                echo "OK: packages/$pkg/CHANGELOG.md was updated."
+                echo "::error::'breaking-change' label is set and PR modifies packages/$pkg/, but packages/$pkg/MIGRATIONS.md was not updated. Add a migration entry with the required five sections."
+                FAIL=1
               fi
             fi
           done
