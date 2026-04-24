@@ -1,0 +1,45 @@
+name: Changelog Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require CHANGELOG entry for changed packages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+
+          if echo "$LABELS" | grep -q '"skip-changelog"'; then
+            echo "skip-changelog label present — skipping."
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$CHANGED"
+          echo
+
+          FAIL=0
+          for pkg in javascript python; do
+            if echo "$CHANGED" | grep -qE "^packages/$pkg/"; then
+              if ! echo "$CHANGED" | grep -qE "^packages/$pkg/CHANGELOG\.md$"; then
+                echo "::error::PR modifies packages/$pkg/ but does not update packages/$pkg/CHANGELOG.md. Add an entry under '## [Unreleased]' or apply the 'skip-changelog' label."
+                FAIL=1
+              else
+                echo "OK: packages/$pkg/CHANGELOG.md was updated."
+              fi
+            fi
+          done
+
+          exit $FAIL
