@@ -1,0 +1,27 @@
+[putitoutthere]
+version = 1
+
+[[package]]
+name = "js/cachetta"
+kind = "npm"
+path = "packages/javascript"
+paths = [
+  "packages/javascript/src/**",
+  "packages/javascript/package.json",
+  "packages/javascript/tsconfig.json",
+  "packages/javascript/vite.config.ts",
+  "packages/javascript/README.md",
+  "pnpm-lock.yaml",
+]
+access = "public"
+
+[[package]]
+name = "py/cachetta"
+kind = "pypi"
+build = "setuptools"
+path = "packages/python"
+paths = [
+  "packages/python/src/**",
+  "packages/python/pyproject.toml",
+  "packages/python/README.md",
+]
