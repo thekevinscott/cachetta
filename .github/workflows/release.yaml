@@ -15,14 +15,20 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   plan:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -35,12 +41,64 @@ jobs:
         with:
           command: plan
 
-  publish:
+  build:
     needs: plan
     if: >-
       github.event_name != 'pull_request'
-      && needs.plan.outputs.matrix != ''
-      && needs.plan.outputs.matrix != '[]'
+      && fromJSON(needs.plan.outputs.matrix || '[]')[0] != null
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runs_on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync docs into packages
+        run: ./scripts/sync-docs.sh
+
+      - name: Setup Node (npm)
+        if: matrix.kind == 'npm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Setup pnpm (npm)
+        if: matrix.kind == 'npm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: Build npm package
+        if: matrix.kind == 'npm'
+        run: |
+          pnpm install --frozen-lockfile
+          cd ${{ matrix.path }}
+          pnpm build
+
+      - name: Setup Python (pypi)
+        if: matrix.kind == 'pypi'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build sdist (setuptools)
+        if: matrix.kind == 'pypi' && matrix.build == 'setuptools' && matrix.target == 'sdist'
+        run: |
+          cd ${{ matrix.path }}
+          python -m pip install build
+          python -m build --sdist --outdir dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+
+  publish:
+    needs: [plan, build]
+    if: >-
+      github.event_name != 'pull_request'
+      && fromJSON(needs.plan.outputs.matrix || '[]')[0] != null
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -55,40 +113,22 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-python@v5
         with:
-          version: latest
+          python-version: '3.12'
+      - name: Install twine
+        run: pip install twine
 
-      - name: Get pnpm store directory
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Configure git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - uses: actions/cache@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
+          path: artifacts
 
-      - name: Install JS dependencies
-        run: pnpm install
-
-      - name: Sync docs into packages
-        run: ./scripts/sync-docs.sh
-
-      - name: Build JS package
-        working-directory: packages/javascript
-        run: pnpm build
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: false
-
-      - name: Build Python package
-        working-directory: packages/python
-        run: uv build
-
-      - name: Publish releases
-        uses: thekevinscott/put-it-out-there@v0
+      - uses: thekevinscott/put-it-out-there@v0
         with:
           command: publish
-          dry_run: ${{ inputs.dry_run == true }}
+          dry_run: ${{ inputs.dry_run || 'false' }}
