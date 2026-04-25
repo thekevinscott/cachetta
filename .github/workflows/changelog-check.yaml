@@ -1,0 +1,75 @@
+name: Changelog Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require CHANGELOG/MIGRATIONS entries for changed packages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          TRAILERS=$(git log --format='%(trailers:only,unfold)' "$BASE_SHA..$HEAD_SHA")
+
+          SKIP=0
+          BREAKING=0
+          if echo "$TRAILERS" | grep -qiE '^Skip-Changelog:[[:space:]]*\S'; then
+            SKIP=1
+          fi
+          if echo "$TRAILERS" | grep -qiE '^Breaking-Change:[[:space:]]*\S'; then
+            BREAKING=1
+          fi
+
+          if [ "$SKIP" = "1" ] && [ "$BREAKING" = "1" ]; then
+            echo "::error::'Skip-Changelog:' and 'Breaking-Change:' trailers are mutually exclusive."
+            exit 1
+          fi
+
+          if [ "$SKIP" = "1" ]; then
+            echo "Skip-Changelog trailer present — skipping."
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$CHANGED"
+          echo
+
+          FAIL=0
+          for pkg in javascript python; do
+            # A package is "touched" if any file under packages/<pkg>/ changed,
+            # excluding MIGRATIONS.md — editing a migration guide on its own
+            # shouldn't force a new CHANGELOG entry.
+            TOUCHED=$(echo "$CHANGED" | grep -E "^packages/$pkg/" | grep -vE "^packages/$pkg/MIGRATIONS\.md$" || true)
+            if [ -z "$TOUCHED" ]; then
+              continue
+            fi
+
+            if echo "$CHANGED" | grep -qE "^packages/$pkg/CHANGELOG\.md$"; then
+              echo "OK: packages/$pkg/CHANGELOG.md updated."
+            else
+              echo "::error::PR modifies packages/$pkg/ but does not update packages/$pkg/CHANGELOG.md. Add an entry under '## [Unreleased]', or add a 'Skip-Changelog: <reason>' trailer to a commit if the change has no consumer-visible effect."
+              FAIL=1
+            fi
+
+            if [ "$BREAKING" = "1" ]; then
+              if echo "$CHANGED" | grep -qE "^packages/$pkg/MIGRATIONS\.md$"; then
+                echo "OK: packages/$pkg/MIGRATIONS.md updated."
+              else
+                echo "::error::'Breaking-Change:' trailer is set and PR modifies packages/$pkg/, but packages/$pkg/MIGRATIONS.md was not updated. Add a migration entry with the required five sections."
+                FAIL=1
+              fi
+            fi
+          done
+
+          exit $FAIL
