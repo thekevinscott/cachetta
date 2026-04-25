@@ -11,6 +11,8 @@ paths = [
   "packages/javascript/tsconfig.json",
   "packages/javascript/vite.config.ts",
   "packages/javascript/README.md",
+  "packages/javascript/CHANGELOG.md",
+  "packages/javascript/MIGRATIONS.md",
   "pnpm-lock.yaml",
 ]
 access = "public"
@@ -24,4 +26,6 @@ paths = [
   "packages/python/src/**",
   "packages/python/pyproject.toml",
   "packages/python/README.md",
+  "packages/python/CHANGELOG.md",
+  "packages/python/MIGRATIONS.md",
 ]

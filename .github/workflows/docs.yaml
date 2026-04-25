@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'packages/javascript/MIGRATIONS.md'
+      - 'packages/python/MIGRATIONS.md'
       - '.github/workflows/docs.yaml'
 
 permissions:
@@ -21,6 +23,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Sync MIGRATIONS.md into docs
+        run: |
+          set -euo pipefail
+
+          sync_migrations() {
+            local pkg="$1"
+            local title="$2"
+            local order="$3"
+            local out="docs/migrations-$pkg.md"
+
+            {
+              echo "---"
+              echo "title: $title"
+              echo "parent: Migrations"
+              echo "nav_order: $order"
+              echo "---"
+              echo
+              echo "<!-- AUTO-GENERATED from packages/$pkg/MIGRATIONS.md — do not edit here. -->"
+              echo
+              cat "packages/$pkg/MIGRATIONS.md"
+            } > "$out"
+          }
+
+          sync_migrations javascript "TypeScript" 1
+          sync_migrations python "Python" 2
 
       - uses: actions/configure-pages@v5
 
