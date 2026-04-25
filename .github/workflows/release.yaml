@@ -73,7 +73,7 @@ jobs:
       - name: Build npm package
         if: matrix.kind == 'npm'
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install
           cd ${{ matrix.path }}
           pnpm build
 
