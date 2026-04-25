@@ -8,4 +8,10 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- The `docs/` folder now ships with the published package, so the full
+  reference is available alongside the README in `node_modules/cachetta/docs/`.
+
+### Changed
+- README restructured into concise `##` sections that mirror the `docs/`
+  folder, with each section linking to the bundled docs page.

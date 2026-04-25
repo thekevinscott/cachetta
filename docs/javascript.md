@@ -3,6 +3,8 @@ title: TypeScript
 nav_order: 2
 ---
 
+> Rendered docs: [thekevinscott.github.io/cachetta/javascript](https://thekevinscott.github.io/cachetta/javascript)
+
 # Cachetta for TypeScript
 
 File-based caching for TypeScript. Uses `v8.serialize` for native binary serialization -- any file extension works, and all V8-serializable types (Maps, Sets, Dates, Buffers, typed arrays, RegExps, etc.) are supported natively.

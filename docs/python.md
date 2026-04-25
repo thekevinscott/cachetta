@@ -3,6 +3,8 @@ title: Python
 nav_order: 3
 ---
 
+> Rendered docs: [thekevinscott.github.io/cachetta/python](https://thekevinscott.github.io/cachetta/python)
+
 # Cachetta for Python
 
 File-based caching for Python. Uses `pickle` for native binary serialization -- any file extension works, and all picklable types (sets, tuples, bytes, dataclasses, etc.) are supported natively.

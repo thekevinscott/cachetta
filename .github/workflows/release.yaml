@@ -68,6 +68,9 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install
 
+      - name: Sync docs into packages
+        run: ./scripts/sync-docs.sh
+
       - name: Build JS package
         working-directory: packages/javascript
         run: pnpm build
