@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'putitoutthere.toml'
+      - '.github/workflows/release.yaml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Plan only, do not publish'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: plan
+        uses: thekevinscott/put-it-out-there@v0
+        with:
+          command: plan
+
+  publish:
+    needs: plan
+    if: >-
+      github.event_name != 'pull_request'
+      && needs.plan.outputs.matrix != ''
+      && needs.plan.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install JS dependencies
+        run: pnpm install
+
+      - name: Build JS package
+        working-directory: packages/javascript
+        run: pnpm build
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build Python package
+        working-directory: packages/python
+        run: uv build
+
+      - name: Publish releases
+        uses: thekevinscott/put-it-out-there@v0
+        with:
+          command: publish
+          dry_run: ${{ inputs.dry_run == true }}

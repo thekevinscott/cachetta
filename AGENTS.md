@@ -84,9 +84,11 @@ uv build                      # Build wheel + sdist
 ## Versioning & Releases
 - Versions are independent per package: JS in `package.json`, Python in `pyproject.toml`
 - **Tag format**: `js/cachetta-v{version}` and `py/cachetta-v{version}`
-- **Release trigger**: manual workflow dispatch or daily cron (2 AM UTC)
-- Supports patch or minor version bumps
-- JS publishes to npm with `--provenance`, Python publishes to PyPI via trusted publishing
+- Releases are orchestrated by [putitoutthere](https://github.com/thekevinscott/put-it-out-there) via `putitoutthere.toml`
+- **Trigger**: push to `main`. Any package whose `paths` matched changed files cascades at `patch`
+- **Override**: add a `release: minor`, `release: major`, or `release: skip` trailer to the commit
+- **Manual**: workflow dispatch with optional `dry_run` input
+- Publishing uses OIDC trusted publishing for both npm and PyPI
 
 ## Code Style
 - **JS**: TypeScript strict mode, ESLint flat config, ES2022 target, ESM only
