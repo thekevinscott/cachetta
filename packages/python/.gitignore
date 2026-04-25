@@ -5,6 +5,7 @@ __pycache__
 .DS_Store
 *.swp
 dist
+docs
 .ruff_cache
 build
 uv.lock

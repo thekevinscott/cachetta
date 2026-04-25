@@ -4,6 +4,8 @@ layout: home
 nav_order: 1
 ---
 
+> Rendered docs: [thekevinscott.github.io/cachetta](https://thekevinscott.github.io/cachetta/)
+
 # Cachetta
 
 File-based caching with the same API across TypeScript and Python. The name is a portmanteau of *cache* and *rosetta*.

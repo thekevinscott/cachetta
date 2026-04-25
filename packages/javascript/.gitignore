@@ -1,4 +1,5 @@
 .wireit
 dist
+docs
 node_modules
 dev

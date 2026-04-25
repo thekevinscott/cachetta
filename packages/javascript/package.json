@@ -12,7 +12,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "docs"
   ],
   "license": "MIT",
   "repository": {
@@ -27,7 +28,8 @@
     "test:integration:watch": "wireit",
     "lint": "wireit",
     "typecheck": "wireit",
-    "build": "wireit"
+    "build": "wireit",
+    "prepack": "../../scripts/sync-docs.sh"
   },
   "wireit": {
     "lint": {
