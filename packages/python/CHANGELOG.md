@@ -8,6 +8,8 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-04-27
+
 ### Added
 - The `docs/` folder now ships with the source distribution, so the full
   reference is available alongside the README inside the published sdist.
