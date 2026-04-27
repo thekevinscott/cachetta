@@ -13,7 +13,7 @@ paths = [
   "packages/javascript/README.md",
   "packages/javascript/CHANGELOG.md",
   "packages/javascript/MIGRATIONS.md",
-  "docs/**",
+  "docs/**/*.md",
   "pnpm-lock.yaml",
 ]
 access = "public"
@@ -30,5 +30,5 @@ paths = [
   "packages/python/README.md",
   "packages/python/CHANGELOG.md",
   "packages/python/MIGRATIONS.md",
-  "docs/**",
+  "docs/**/*.md",
 ]
