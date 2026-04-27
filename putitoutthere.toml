@@ -5,7 +5,7 @@ version = 1
 name = "js/cachetta"
 kind = "npm"
 path = "packages/javascript"
-paths = [
+globs = [
   "packages/javascript/src/**",
   "packages/javascript/package.json",
   "packages/javascript/tsconfig.json",
@@ -23,7 +23,7 @@ name = "py/cachetta"
 kind = "pypi"
 build = "setuptools"
 path = "packages/python"
-paths = [
+globs = [
   "packages/python/src/**",
   "packages/python/pyproject.toml",
   "packages/python/MANIFEST.in",
