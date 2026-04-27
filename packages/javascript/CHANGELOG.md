@@ -8,7 +8,7 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
-## [0.3.1] - 2026-04-27
+## [0.3.2] - 2026-04-27
 
 ### Added
 - The `docs/` folder now ships with the published package, so the full
