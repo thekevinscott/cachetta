@@ -29,7 +29,8 @@
     "lint": "wireit",
     "typecheck": "wireit",
     "build": "wireit",
-    "prepack": "../../scripts/sync-docs.sh"
+    "prepack": "../../scripts/sync-docs.sh",
+    "prepublishOnly": "npx --yes pnpm@9 install --frozen-lockfile && npx --yes pnpm@9 build"
   },
   "wireit": {
     "lint": {
