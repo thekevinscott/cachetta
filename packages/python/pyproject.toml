@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cachetta"
-version = "0.5.0"
+dynamic = ["version"]
 description = "File-based caching for Python"
 requires-python = ">= 3.12"
 license = "MIT"
@@ -48,5 +48,12 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
 cachetta = ["docs/*.md"]
+
+[tool.setuptools_scm]
+# Match our `py/cachetta-v{version}` tag prefix. piot overrides this
+# at release time via SETUPTOOLS_SCM_PRETEND_VERSION; the regex matters
+# only for local dev / CI test paths that don't run through piot.
+tag_regex = '^py/cachetta-v(?P<version>.+)$'
+fallback_version = "0.0.0+local"
 
 
