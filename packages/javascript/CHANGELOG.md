@@ -8,6 +8,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Fixed
+- Restored the compiled `dist/` directory in the published tarball.
+  Versions 0.3.1 and 0.3.2 shipped with `dist/` missing — the publish
+  pipeline didn't build before packing — so installing those versions
+  produced a broken module that couldn't be imported. Upgrade to this
+  release for a working install.
+
 ## [0.3.2] - 2026-04-27
 
 ### Added
