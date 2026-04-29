@@ -20,6 +20,8 @@ export default defineConfig({
   },
   plugins: [
     dts({
+      entryRoot: 'src',
+      exclude: ['**/*.test.ts'],
       afterDiagnostic: (diagnostics) => {
         if (diagnostics.length) {
           throw new Error("type error");
