@@ -14,6 +14,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   pipeline didn't build before packing — so installing those versions
   produced a broken module that couldn't be imported. Upgrade to this
   release for a working install.
+- Fixed TypeScript type resolution for consumers. Version 0.3.3 emitted
+  declarations to `dist/src/index.d.ts` while `package.json` pointed at
+  `dist/index.d.ts`, so importing `cachetta` from a TypeScript project
+  failed with "Cannot find module 'cachetta' or its corresponding type
+  declarations." Declarations now land at the declared path.
+- Stopped shipping test `*.test.d.ts` declarations in the published
+  tarball.
 
 ## [0.3.2] - 2026-04-27
 
