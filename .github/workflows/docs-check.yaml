@@ -1,0 +1,54 @@
+name: Docs Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require docs updates for public-facing source changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          TRAILERS=$(git log --format='%(trailers:only,unfold)' "$BASE_SHA..$HEAD_SHA")
+
+          if echo "$TRAILERS" | grep -qiE '^Skip-Docs:[[:space:]]*\S'; then
+            echo "Skip-Docs trailer present — skipping."
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$CHANGED"
+          echo
+
+          FAIL=0
+          for pkg in javascript python; do
+            # Only files under packages/<pkg>/src/ count as public-facing.
+            # Tests, build configs, lockfiles, and internal tooling don't
+            # require docs updates on their own — use the Skip-Docs trailer
+            # if a public-facing src/ change genuinely has no observable
+            # behavior (rare; prefer a CHANGELOG entry too).
+            SRC_TOUCHED=$(echo "$CHANGED" | grep -E "^packages/$pkg/src/" || true)
+            if [ -z "$SRC_TOUCHED" ]; then
+              continue
+            fi
+
+            if echo "$CHANGED" | grep -qE "^docs/$pkg\.md$"; then
+              echo "OK: docs/$pkg.md updated alongside packages/$pkg/src/ changes."
+            else
+              echo "::error::PR modifies packages/$pkg/src/ but does not update docs/$pkg.md. Update the docs to reflect the user-visible change, or add a 'Skip-Docs: <reason>' trailer to a commit if no docs change is warranted (e.g. pure internal refactor)."
+              FAIL=1
+            fi
+          done
+
+          exit $FAIL

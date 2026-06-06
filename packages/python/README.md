@@ -123,6 +123,12 @@ Async variants: `aexists`, `aage`, `ainfo`.
 cache = Cachetta(path='./cache')
 with read_cache(cache / 'my-data.json') as data:
     ...
+
+# Subfolder for auto-hashed entries
+sub = cache / 'llm-calls'
+
+# Callable for custom layouts (resolved at call time)
+custom = cache / (lambda kind, ident: f'{kind}/{ident}.pkl')
 ```
 
 [→ Path Operator](./docs/python.md#path-operator)

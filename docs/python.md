@@ -213,7 +213,9 @@ await cache.ainfo()
 
 ## Path Operator
 
-Use the `/` operator to build sub-paths:
+Use the `/` operator to build sub-paths from a base cache.
+
+### Joining a static sub-path
 
 ```python
 cache = Cachetta(path='./cache')
@@ -221,6 +223,38 @@ cache = Cachetta(path='./cache')
 with read_cache(cache / 'my-data.json') as data:
     ...
 ```
+
+### Subfolders for auto-hashed entries
+
+When the right-hand side is a string with no file extension, the result is a real subfolder. Auto-hashed entries from a decorated function live *inside* that folder rather than as hyphenated siblings:
+
+```python
+cache = Cachetta(path='./cache') / 'llm-calls'
+
+@cache
+def call_llm(prompt):
+    ...
+
+call_llm('hello')   # cached at ./cache/llm-calls/<hash>
+call_llm('world')   # cached at ./cache/llm-calls/<other-hash>
+```
+
+### Callable right-hand side (custom layouts)
+
+Pass a callable to defer path resolution to call time. The callable receives the wrapped function's args and returns a filename or sub-path, which is joined onto the cache's base folder:
+
+```python
+cache = Cachetta(path='./cache') / (lambda kind, ident: f'{kind}/{ident}.pkl')
+
+@cache
+def download(kind, ident):
+    ...
+
+download('pdf', '2401.12345v1')   # cached at ./cache/pdf/2401.12345v1.pkl
+download('html', 'abc')           # cached at ./cache/html/abc.pkl
+```
+
+This is the right tool for custom file layouts (kind-routing, id-not-hash filenames, etc.). The callable's return is validated against `..` traversal — paths that try to escape the base folder raise `InvalidPathError`.
 
 ## Dynamic Cache Paths
 
