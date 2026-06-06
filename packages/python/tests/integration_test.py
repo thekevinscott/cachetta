@@ -985,12 +985,18 @@ def describe_falsy_value_caching():
 
 # -- Condition callback edge cases --
 
+def _raise_zero_division(_result: object) -> bool:
+    """A `condition` callable that always raises, used to verify that an
+    exception raised inside the condition propagates to the caller."""
+    raise ZeroDivisionError("boom")
+
+
 def describe_condition_edge_cases():
     def test_condition_exception_propagates():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(
                 path=f"{tmpdir}/cond_err.json",
-                condition=lambda r: 1 / 0,  # raises ZeroDivisionError
+                condition=_raise_zero_division,
             )
 
             @cache
@@ -1004,7 +1010,7 @@ def describe_condition_edge_cases():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(
                 path=f"{tmpdir}/cond_err_async.json",
-                condition=lambda r: 1 / 0,
+                condition=_raise_zero_division,
             )
 
             @cache

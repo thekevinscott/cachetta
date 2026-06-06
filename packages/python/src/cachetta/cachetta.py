@@ -35,7 +35,7 @@ class Cachetta:
         skip_self: When True, strips the first positional argument (self/cls) before
             passing args to the path function. Useful for decorating class methods.
     """
-    path: str | Path | Callable
+    path: str | Path | Callable[..., str | Path]
     write: bool = True
     read: bool = True
     duration: timedelta = timedelta(days=7)
@@ -89,17 +89,19 @@ class Cachetta:
         a unique cache path by hashing the arguments (similar to functools.lru_cache).
         """
         path = self.path
-        if type(path) is str:
-            resolved = Path(path)
-        elif isinstance(path, Path):
-            resolved = path
-        else:
+        # A callable path is resolved dynamically at call time; str/Path values
+        # fall through to the auto-hashing logic below. The `not isinstance`
+        # check narrows the `str | Path | Callable[...]` union to the callable
+        # arm here, and to `str | Path` after the block.
+        if not isinstance(path, (str, Path)):
             resolved = Path(path(*args, **kwargs))
             if ".." in resolved.parts:
                 raise InvalidPathError(
                     "Path traversal detected: %s" % resolved
                 )
             return resolved
+
+        resolved = Path(path)
 
         # Auto cache key: hash arguments and embed in the path.
         # Paths with an extension are treated as file templates: the hash is
@@ -177,6 +179,10 @@ class Cachetta:
                 # fn + kwargs: apply overrides and wrap immediately
                 return cache_fn(cache, fn)
             return lambda fn: cache(fn)
+        # Reachable only when kwargs is empty and the guard above didn't fire,
+        # so fn is truthy here. Assert it so the type checker can narrow
+        # `Callable | None` to `Callable` for the cache_fn call.
+        assert fn is not None
         return cache_fn(self, fn)
 
     def wrap(self, fn: Callable) -> Callable:

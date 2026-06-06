@@ -33,12 +33,43 @@ runner_args = []
 patterns = ["*.py"]
 ignore_patterns = []
 
+# ---------------------------------------------------------------------------
+# ty — Astral's static type checker. Configured to be as strict as possible
+# and enforced by .github/workflows/py-typecheck.yaml. The version is pinned
+# in [dependency-groups].dev below so the gate is deterministic across runs.
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+python-version = "3.12"   # matches requires-python = ">= 3.12"
+python-platform = "all"   # check every platform, not just CI's linux
+
+[tool.ty.terminal]
+error-on-warning = true   # any rule left at "warn" fails the build
+
+[tool.ty.rules]
+# error-on-warning (above) promotes every "warn"-default rule — and any new
+# ones that future ty releases add — to a build failure. It cannot reach
+# rules that default to "ignore", so each STABLE ignore-default rule is
+# raised to "error" by hand below (reconciled against `ty explain rule` for
+# the pinned 0.0.44).
+#
+# Preview rules are deliberately NOT enabled. ty 0.0.44 has no global preview
+# switch, so they could only be turned on by hand-listing each unstable rule
+# name — exactly the churn this pinned gate exists to avoid. That leaves out
+# the one remaining ignore-default rule, `missing-override-decorator`, which
+# is preview-only.
+division-by-zero = "error"
+possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+possibly-unresolved-reference = "error"
+unsupported-dynamic-base = "error"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-describe>=3.1.0",
     "pytest-watcher>=0.4.3",
+    "ty==0.0.44",
 ]
 
 

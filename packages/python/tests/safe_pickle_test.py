@@ -188,7 +188,10 @@ def describe_cachetta_integration():
             # Write a malicious payload directly
             class _Exploit:
                 def __reduce__(self):
-                    return (os.system, ("echo pwned",))
+                    # os.system is intentionally referenced as a representative
+                    # dangerous callable in the exploit payload; its soft
+                    # deprecation is irrelevant to what this test verifies.
+                    return (os.system, ("echo pwned",))  # ty: ignore[deprecated]
 
             with open(cache_path, "wb") as f:
                 pickle.dump(_Exploit(), f)
