@@ -1161,3 +1161,155 @@ def describe_literal_path_with_args():
             # Args to invalidate should also resolve to the literal path
             cache.invalidate("anything")
             assert not cache_path.exists()
+
+
+# -- .hashed mode (issue #44) --
+
+def describe_hashed_mode():
+    """Decorator: `@cache.hashed` writes one file per arg-hash inside the
+    folder named by `path`: `{path}/{hash}` (bare hash filename).
+    """
+
+    def test_writes_bare_hash_under_path():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "llm"
+            cache = Cachetta(path=str(cache_dir))
+
+            @cache.hashed
+            def call(prompt):
+                return "response: " + prompt
+
+            result = call("hello")
+            assert result == "response: hello"
+
+            files = list(cache_dir.iterdir())
+            assert len(files) == 1
+            assert files[0].suffix == ""
+            assert files[0].parent == cache_dir
+
+    def test_different_args_different_files():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir))
+
+            @cache.hashed
+            def call(x):
+                return x * 2
+
+            call(1)
+            call(2)
+            call(3)
+
+            files = list(cache_dir.iterdir())
+            assert len(files) == 3
+
+    def test_same_args_hits_cache():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            call_count = 0
+            cache = Cachetta(path=f"{tmpdir}/cache")
+
+            @cache.hashed
+            def call(x):
+                nonlocal call_count
+                call_count += 1
+                return x * 2
+
+            r1 = call(5)
+            r2 = call(5)
+            assert r1 == r2 == 10
+            assert call_count == 1
+
+    def test_key_override():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir))
+
+            @cache.hashed(key=lambda x: f"id-{x}")
+            def call(x):
+                return x * 2
+
+            call(42)
+            files = list(cache_dir.iterdir())
+            assert files[0].name == "id-42"
+
+    def test_key_rejects_path_traversal():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/cache")
+
+            @cache.hashed(key=lambda x: "../../etc/passwd")
+            def call(x):
+                return x
+
+            with pytest.raises((InvalidPathError, CachettaError)):
+                call("anything")
+
+    def test_key_rejects_slashes():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/cache")
+
+            @cache.hashed(key=lambda x: "sub/dir")
+            def call(x):
+                return x
+
+            with pytest.raises((InvalidPathError, CachettaError)):
+                call("a")
+
+    def test_condition_gates_writes():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(
+                path=str(cache_dir),
+                condition=lambda r: r is not None,
+            )
+
+            @cache.hashed
+            def call(x):
+                return None if x == "skip" else x
+
+            call("skip")
+            files = list(cache_dir.iterdir()) if cache_dir.exists() else []
+            assert len(files) == 0
+
+            call("keep")
+            assert len(list(cache_dir.iterdir())) == 1
+
+    def test_skip_self_honored():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir), skip_self=True)
+
+            class Service:
+                @cache.hashed
+                def call(self, prompt):
+                    return prompt.upper()
+
+            s1 = Service()
+            s2 = Service()
+            r1 = s1.call("hello")
+            r2 = s2.call("hello")
+            assert r1 == r2 == "HELLO"
+            files = list(cache_dir.iterdir())
+            assert len(files) == 1
+
+    async def test_async_function():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir))
+
+            call_count = 0
+
+            @cache.hashed
+            async def call(prompt):
+                nonlocal call_count
+                call_count += 1
+                return "resp: " + prompt
+
+            r1 = await call("hi")
+            r2 = await call("hi")
+            assert r1 == r2 == "resp: hi"
+            assert call_count == 1
+
+    def test_disallows_callable_path():
+        cache = Cachetta(path=lambda: "some/path")
+        with pytest.raises(CachettaError):
+            cache.hashed(lambda x: x)

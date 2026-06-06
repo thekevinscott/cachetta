@@ -29,6 +29,11 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   callable form) or external indexes that line up with cachetta's own
   keying without re-implementing the hasher. Note: the digest is **not**
   cross-language portable with the JavaScript `hash` export.
+- New `@cache.hashed` decorator: writes one file per arg-hash inside the
+  folder named by `path` (`{path}/{hash}`, bare hash filename). Replaces
+  the common boilerplate of hand-rolling a path lambda that re-implements
+  Cachetta's own hashing. Supports `key=` to supply a custom single-segment
+  filename instead of the default hash. Honors `condition` and `skip_self`.
 
 ### Fixed
 - `cache / 'sub'` (string right-hand operand) now produces real
