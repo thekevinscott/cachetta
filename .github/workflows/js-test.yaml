@@ -48,11 +48,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      # Runs the unit suite with coverage. The `thresholds.lines` floor in
-      # vitest.config.unit.ts enforces requirement (2) — total unit coverage
-      # must not drop below the current baseline — and the run emits the
+      # Runs the unit suite with coverage. The `thresholds` in
+      # vitest.config.unit.ts require the unit suite to be 100% covered
+      # (lines, branches, functions, statements), and the run emits the
       # Cobertura report consumed by the patch-coverage step below.
-      - name: Unit tests + coverage floor
+      - name: Unit tests + coverage (100%, incl. branches)
         working-directory: packages/javascript
         run: pnpm exec vitest run -c vitest.config.unit.ts --coverage
 

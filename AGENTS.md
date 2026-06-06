@@ -64,17 +64,15 @@ The Jekyll site under `docs/` is the canonical reference for end users. Each pac
 - Keep `packages/<pkg>/README.md` aligned with the docs page where the two overlap. The README is intentionally a condensed mirror that links back to `docs/<pkg>.md`.
 
 ### Test coverage
-CI gates coverage on **both** packages, measured over the **unit suite only** (integration tests are deliberately excluded). Two things are enforced from a single unit-coverage run per package:
+CI requires the **unit suite** to be **100% covered, including branches**, on **both** packages. Integration tests are deliberately excluded from the measurement, so the figure reflects genuine unit coverage.
 
-1. **New code → 100%.** Every line you add or change under `packages/<pkg>/src/` must be covered by the unit suite (`src/**/*.test.ts` for JS; the `-m "not integration"` suite for Python). `diff-cover` runs against the PR's base branch at `--fail-under=100`. Code covered *only* by an integration test still counts as uncovered — the goal is to enforce unit tests.
-2. **Existing code → current floor.** Total unit-suite coverage must not drop below the current baseline: **JS ≥ 81%** (vitest `coverage.thresholds.lines`) and **Python ≥ 92%** (`pytest --cov-fail-under`). Floors may ratchet upward over time; never down.
-3. **Every source module → its own colocated unit test.** Line-coverage can be satisfied *transitively* (an integration test, or an unrelated unit test, happening to execute a module's lines), which would let a brand-new module ship "100% covered" without a unit test of its own. So a structural check (`scripts/check-unit-test-presence.sh`, run by the **Unit Test Presence** workflow) additionally requires that each source module has a dedicated unit test:
-   - **JS:** `src/foo.ts` → colocated `src/foo.test.ts` (only `index.ts` and `types.ts` are exempt).
-   - **Python:** `src/cachetta/foo.py` → `tests/foo_test.py`, mirroring the subpackage path (only `__init__.py` files are exempt; private `_*.py` modules are **not** exempt).
-   - If a module genuinely has no unit-testable logic, exclude it explicitly in `scripts/check-unit-test-presence.sh` — never silence the check wholesale.
+- **JS:** `vitest.config.unit.ts` sets `coverage.thresholds` to `100` for lines, branches, functions, and statements over `src/**/*.ts` (unit tests are `src/**/*.test.ts`).
+- **Python:** the unit run is `pytest -m "not integration" --cov=cachetta --cov-branch --cov-fail-under=100`, so both line and branch coverage must be 100%.
 
-- **CI enforces requirement (1) by default.** To waive it — for genuinely integration-only code that cannot be unit-tested — add a `Skip-Coverage: <reason>` trailer to a commit in the PR. The trailer mirrors `Skip-Changelog:` / `Skip-Docs:` semantics: the value records the justification in git. It waives **only** the patch-coverage check; the floor (requirement 2) is never waived.
-- Run coverage locally before pushing: `pnpm exec vitest run -c vitest.config.unit.ts --coverage` (JS) and `uv run pytest -m "not integration" --cov=cachetta` (Python).
+Because the whole unit suite is held at 100%, any new or changed `src/` code is covered by construction; `diff-cover` still runs as a changed-lines backstop. Code covered *only* by an integration test counts as uncovered — the goal is to enforce unit tests.
+
+- For genuinely unreachable / defensive code, use a coverage-ignore hint rather than a fake test: `/* v8 ignore next */` (JS) or `# pragma: no cover` (Python). Use sparingly and only where a test truly cannot reach the branch.
+- Run coverage locally before pushing: `pnpm exec vitest run -c vitest.config.unit.ts --coverage` (JS) and `uv run pytest -m "not integration" --cov=cachetta --cov-branch` (Python).
 
 ## Project Structure
 - `packages/javascript/` - TypeScript implementation (npm: `cachetta`)
