@@ -1,3 +1,5 @@
+@notes/agents.md
+
 # Cachetta Development
 
 ## Workflow
@@ -56,15 +58,6 @@ Monorepo managed with `pnpm-workspace.yaml`. Packages are independent - separate
 - **Tests**: `packages/python/tests/`
 - Uses `pytest-describe` (`describe_*` / `it_*` blocks) and `pytest-asyncio` (auto mode)
 - Includes performance and developer experience tests
-
-## Architecture
-- File-based caching library with matching APIs in JS/TS and Python
-- **JS serialization**: `v8.serialize()` / `v8.deserialize()` (binary, not JSON)
-- **Python serialization**: `pickle`
-- `Cachetta` class is the main entry point - configurable with path, duration, read/write flags, LRU size, stale-while-revalidate
-- Arguments are hashed to generate unique cache file paths
-- Optional in-memory LRU layer sits in front of disk reads
-- Both sync and async APIs in each language
 
 ## Key Commands
 
