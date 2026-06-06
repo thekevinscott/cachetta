@@ -47,7 +47,7 @@ packages = { find = { where = ["src"] } }
 package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
-cachetta = ["docs/*.md"]
+cachetta = ["docs/**/*.md"]
 
 [tool.setuptools_scm]
 # Match our `py/cachetta-v{version}` tag prefix. piot overrides this
