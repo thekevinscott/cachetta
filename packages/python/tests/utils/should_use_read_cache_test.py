@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch, Mock
 import pytest
 from cachetta.cachetta import Cachetta
@@ -27,6 +28,10 @@ class MockCache(Cachetta):
 
 
 def describe_should_use_read_cache():
+    def test_it_returns_false_when_cache_length_is_zero():
+        cache = MockCache(path="foo", duration=timedelta(0))
+        assert should_use_read_cache(cache, "foo") is False
+
     def test_it_returns_false_if_cache_time_is_none(mock_get_last_updated):
         mock_get_last_updated.return_value = None
         assert should_use_read_cache(MockCache(path="foo"), "foo") is False

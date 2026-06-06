@@ -2,8 +2,14 @@ import pickle
 import pytest
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 from cachetta.cachetta import Cachetta
-from cachetta.write_cache import write_cache
+from cachetta.write_cache import (
+    write_cache,
+    write_cache_ctx,
+    async_write_cache,
+    async_write_cache_ctx,
+)
 
 
 class MockCache(Cachetta):
@@ -148,3 +154,97 @@ def describe_write_cache():
             # Original file should still be intact
             with open(cache_path, "rb") as f:
                 assert pickle.load(f) == {"version": 1}
+
+    def test_it_cleans_up_temp_file_when_pickle_fails():
+        """The except BaseException branch unlinks the temp file on failure."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "fail.dat"
+            cache = MockCache(path=str(cache_path))
+            cache.write = True
+
+            # A lambda is not picklable -> pickle.dump raises inside write_cache.
+            with pytest.raises((TypeError, pickle.PicklingError, AttributeError)):
+                write_cache(cache, lambda: None)
+
+            # No leftover .tmp files should remain in the directory.
+            leftovers = list(Path(tmpdir).glob("*.tmp"))
+            assert leftovers == []
+            assert not cache_path.exists()
+
+    def test_it_swallows_oserror_during_temp_file_cleanup():
+        """If unlinking the temp file fails with OSError, it is swallowed and the
+        original pickling error still propagates."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "fail.dat"
+            cache = MockCache(path=str(cache_path))
+            cache.write = True
+
+            with patch("cachetta.write_cache.os.unlink", side_effect=OSError("boom")):
+                # A lambda is not picklable -> pickle.dump raises, triggering the
+                # except branch where os.unlink (mocked) raises OSError.
+                with pytest.raises((TypeError, pickle.PicklingError, AttributeError)):
+                    write_cache(cache, lambda: None)
+
+
+def describe_write_cache_ctx():
+    def test_it_writes_data_on_exit():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "ctx.dat"
+            cache = MockCache(path=str(cache_path))
+            cache.write = True
+
+            with write_cache_ctx(cache) as writer:
+                writer.set({"ctx": True})
+
+            assert cache_path.exists()
+            with open(cache_path, "rb") as f:
+                assert pickle.load(f) == {"ctx": True}
+
+    def test_it_does_not_write_when_no_data_set():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "noctx.dat"
+            cache = MockCache(path=str(cache_path))
+            cache.write = True
+
+            with write_cache_ctx(cache):
+                pass
+
+            assert not cache_path.exists()
+
+
+def describe_async_write_cache():
+    async def test_it_writes_data():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "async.dat"
+            cache = MockCache(path=str(cache_path))
+            cache.write = True
+
+            await async_write_cache(cache, {"async": True})
+
+            with open(cache_path, "rb") as f:
+                assert pickle.load(f) == {"async": True}
+
+
+def describe_async_write_cache_ctx():
+    async def test_it_writes_data_on_exit():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "actx.dat"
+            cache = MockCache(path=str(cache_path))
+            cache.write = True
+
+            async with async_write_cache_ctx(cache) as writer:
+                writer.set({"actx": True})
+
+            with open(cache_path, "rb") as f:
+                assert pickle.load(f) == {"actx": True}
+
+    async def test_it_does_not_write_when_no_data_set():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "noactx.dat"
+            cache = MockCache(path=str(cache_path))
+            cache.write = True
+
+            async with async_write_cache_ctx(cache):
+                pass
+
+            assert not cache_path.exists()
