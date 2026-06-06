@@ -24,6 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # diff-cover (patch coverage) needs the base branch history.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -45,9 +48,39 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Unit tests
+      # Runs the unit suite with coverage. The `thresholds.lines` floor in
+      # vitest.config.unit.ts enforces requirement (2) — total unit coverage
+      # must not drop below the current baseline — and the run emits the
+      # Cobertura report consumed by the patch-coverage step below.
+      - name: Unit tests + coverage floor
         working-directory: packages/javascript
-        run: pnpm test:unit
+        run: pnpm exec vitest run -c vitest.config.unit.ts --coverage
+
+      # Requirement (1): every line added/changed in this PR must be covered
+      # by the unit suite. Integration-only coverage does not count, because
+      # the report above is from the unit run.
+      - name: Patch coverage (changed lines must be 100% unit-covered)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Escape hatch mirroring Skip-Changelog / Skip-Docs: a
+          # `Skip-Coverage: <reason>` trailer on any commit in the PR waives
+          # this patch-coverage check. Use only for genuinely integration-only
+          # code. The coverage floor above is never waived.
+          TRAILERS=$(git log --format='%(trailers:only,unfold)' "$BASE_SHA..$HEAD_SHA")
+          if echo "$TRAILERS" | grep -qiE '^Skip-Coverage:[[:space:]]*\S'; then
+            echo "Skip-Coverage trailer present — skipping patch coverage."
+            exit 0
+          fi
+
+          git fetch --no-tags --force origin \
+            "$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
+          pipx run diff-cover packages/javascript/coverage/cobertura-coverage.xml \
+            --compare-branch="origin/$GITHUB_BASE_REF" --fail-under=100
 
       - name: Integration tests
         working-directory: packages/javascript

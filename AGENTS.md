@@ -63,6 +63,15 @@ The Jekyll site under `docs/` is the canonical reference for end users. Each pac
 - **CI enforces this by default.** If a PR modifies any file under `packages/<pkg>/src/`, CI requires `docs/<pkg>.md` to be updated in the same PR. To waive — for genuine internal refactors that don't change observable behavior — add a `Skip-Docs: <reason>` trailer to a commit in the PR. The trailer mirrors `Skip-Changelog:` semantics: the value records the justification in git.
 - Keep `packages/<pkg>/README.md` aligned with the docs page where the two overlap. The README is intentionally a condensed mirror that links back to `docs/<pkg>.md`.
 
+### Test coverage
+CI gates coverage on **both** packages, measured over the **unit suite only** (integration tests are deliberately excluded). Two things are enforced from a single unit-coverage run per package:
+
+1. **New code → 100%.** Every line you add or change under `packages/<pkg>/src/` must be covered by the unit suite (`src/**/*.test.ts` for JS; the `-m "not integration"` suite for Python). `diff-cover` runs against the PR's base branch at `--fail-under=100`. Code covered *only* by an integration test still counts as uncovered — the goal is to enforce unit tests.
+2. **Existing code → current floor.** Total unit-suite coverage must not drop below the current baseline: **JS ≥ 81%** (vitest `coverage.thresholds.lines`) and **Python ≥ 92%** (`pytest --cov-fail-under`). Floors may ratchet upward over time; never down.
+
+- **CI enforces requirement (1) by default.** To waive it — for genuinely integration-only code that cannot be unit-tested — add a `Skip-Coverage: <reason>` trailer to a commit in the PR. The trailer mirrors `Skip-Changelog:` / `Skip-Docs:` semantics: the value records the justification in git. It waives **only** the patch-coverage check; the floor (requirement 2) is never waived.
+- Run coverage locally before pushing: `pnpm exec vitest run -c vitest.config.unit.ts --coverage` (JS) and `uv run pytest -m "not integration" --cov=cachetta` (Python).
+
 ## Project Structure
 - `packages/javascript/` - TypeScript implementation (npm: `cachetta`)
 - `packages/python/` - Python implementation (PyPI: `cachetta`)
