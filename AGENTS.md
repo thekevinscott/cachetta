@@ -30,6 +30,13 @@ Each package owns its own `CHANGELOG.md` and `MIGRATIONS.md` (`packages/javascri
   ```
 - `MIGRATIONS.md` is the source of truth. The docs site auto-pulls it during the Jekyll build — do not hand-edit migration content under `docs/`.
 
+### Docs
+The Jekyll site under `docs/` is the canonical reference for end users. Each package has a single docs page: `docs/javascript.md` and `docs/python.md`.
+
+- **Any public-facing change must include a docs update.** A change is public-facing if it modifies the surface a consumer sees — a new option, a new method, altered defaults, changed error behavior, a renamed export, etc. The bar is the same as for CHANGELOG: if a consumer will notice, the docs need to reflect it.
+- **CI enforces this by default.** If a PR modifies any file under `packages/<pkg>/src/`, CI requires `docs/<pkg>.md` to be updated in the same PR. To waive — for genuine internal refactors that don't change observable behavior — add a `Skip-Docs: <reason>` trailer to a commit in the PR. The trailer mirrors `Skip-Changelog:` semantics: the value records the justification in git.
+- Keep `packages/<pkg>/README.md` aligned with the docs page where the two overlap. The README is intentionally a condensed mirror that links back to `docs/<pkg>.md`.
+
 ## Project Structure
 - `packages/javascript/` - TypeScript implementation (npm: `cachetta`)
 - `packages/python/` - Python implementation (PyPI: `cachetta`)
