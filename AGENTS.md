@@ -2,6 +2,30 @@
 
 # Cachetta Development
 
+## Test-driven workflow (read this first)
+
+> **Start with a red failing integration test(s), and confirm that test(s)
+> fails on CI _and all other checks go green_. Then proceed with
+> implementation.**
+
+For any new behavior or bug fix:
+
+1. Write the integration test(s) first. The test must describe the
+   consumer-visible behavior the change will introduce.
+2. Commit and push the test alone (no implementation), then open the PR so
+   CI runs. Verify two things at once:
+   - the new test(s) actually fails (a passing test means it isn't
+     exercising the intended behavior); and
+   - **every other check is green** — lint, build, typecheck, changelog
+     gate, docs gate, the rest of the test suite. A red test is only
+     meaningful if it's the *only* red light.
+3. Only after the red+green state is confirmed on CI, push the
+   implementation in a follow-up commit and watch CI turn fully green.
+
+If the unrelated checks aren't green at step 2, fix them first — the
+failing test must be the only signal you carry into the implementation
+step.
+
 ## Workflow
 - **NEVER commit directly to main** - always create a PR
 - **Before pushing**: run tests for the package(s) you changed (see Key Commands)

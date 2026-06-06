@@ -8,6 +8,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Changed
+- The published tarball now ships `docs/` **recursively**, so markdown
+  files under nested subdirectories (e.g. `docs/llm/javascript/index.md`)
+  land in `node_modules/cachetta/docs/` alongside the top-level pages.
+  Previously only flat `docs/*.md` was synced into the package and any
+  subdirectory was silently dropped. (#56)
+
 ### Fixed
 - Restored the compiled `dist/` directory in the published tarball.
   Versions 0.3.1 and 0.3.2 shipped with `dist/` missing — the publish

@@ -16,11 +16,15 @@ copy_docs() {
   local dst="$1"
   rm -rf "$dst"
   mkdir -p "$dst"
-  # Copy markdown only — Jekyll config/Gemfile aren't useful inside packages.
-  for f in "$SRC"/*.md; do
-    [ -e "$f" ] || continue
-    cp "$f" "$dst/"
-  done
+  # Copy markdown only (Jekyll config/Gemfile aren't useful inside packages)
+  # and recurse so nested folders like docs/llm/python/ make it into the
+  # tarballs. -print0 / read -d '' handles whitespace in paths safely.
+  while IFS= read -r -d '' f; do
+    rel="${f#$SRC/}"
+    sub="$(dirname "$rel")"
+    mkdir -p "$dst/$sub"
+    cp "$f" "$dst/$rel"
+  done < <(find "$SRC" -type f -name '*.md' -print0)
   echo "synced docs -> ${dst#$REPO_ROOT/}"
 }
 
