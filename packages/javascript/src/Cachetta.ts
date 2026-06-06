@@ -4,11 +4,11 @@ import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
 import { validateCachePath } from './utils/validate-cache-path.js';
 import { promises as fs, unlinkSync } from 'fs';
-import { createHash } from 'crypto';
 import { dirname, join } from 'path';
 import { inspect } from 'util';
 
 import { LRU_MISS } from './constants.js';
+import { hash } from './hash.js';
 
 const DEFAULT_DURATION = 7 * 24 * 60 * 60 * 1000; // Default 7 days in milliseconds
 
@@ -182,19 +182,16 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
       if (args.length === 0) {
         return this.path;
       }
-      const hash = createHash('sha256')
-        .update(JSON.stringify(args))
-        .digest('hex')
-        .slice(0, 16);
+      const digest = hash(...args);
       const dir = dirname(this.path);
       const base = this.path.split('/').pop()!;
       const dotIndex = base.lastIndexOf('.');
       if (dotIndex === -1) {
-        return join(dir, `${base}-${hash}`);
+        return join(dir, `${base}-${digest}`);
       }
       const name = base.slice(0, dotIndex);
       const ext = base.slice(dotIndex);
-      return join(dir, `${name}-${hash}${ext}`);
+      return join(dir, `${name}-${digest}${ext}`);
     }
     return this.path(...args);
   }

@@ -156,6 +156,25 @@ await getUser(1);   // cached at ./cache/users-<hash1>.json
 await getUser(2);   // cached at ./cache/users-<hash2>.json
 ```
 
+### Public `hash` helper
+
+The same digest the auto-keyed path uses is exposed as a top-level `hash` export. Use it when you want to construct cache paths manually (e.g. inside a `path:` callable that keys on a subset of args) and keep them aligned with cachetta's own keying:
+
+```javascript
+import { Cachetta, hash } from 'cachetta';
+
+const cache = new Cachetta({
+  path: (model, prompt, opts) => `./cache/llm/${model}/${hash(prompt)}.json`,
+});
+
+const callLLM = cache(async (model, prompt, opts) => callApi(model, prompt, opts));
+```
+
+`hash(...args)` accepts any JSON-serializable arguments and returns a 16-char hex string. It's a pure function — no I/O, no `Cachetta` instance required.
+
+{: .warning }
+> The JS and Python `hash` exports are **not** cross-language portable. They use different stringifiers (`JSON.stringify` vs `json.dumps(..., default=str)`) and the Python variant also folds in `**kwargs`, so the same logical input produces different digests in each language. Use each language's `hash` only to align with that language's own cachetta.
+
 ## In-Memory LRU
 
 Add an in-memory LRU layer that is checked before hitting disk:

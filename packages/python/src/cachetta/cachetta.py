@@ -1,6 +1,4 @@
 import asyncio
-import hashlib
-import json
 import os
 import threading
 from collections import OrderedDict
@@ -11,6 +9,7 @@ from typing import Any, Callable, Optional
 from pathlib import Path
 from .exceptions import CachettaError, InvalidPathError
 from ._sentinel import _LRU_MISS
+from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
 from .utils.get_last_updated import async_get_last_updated
 
@@ -110,8 +109,7 @@ class Cachetta:
         # filename (foo -> foo/{hash}), so `cache / 'sub'` produces real
         # subfolder semantics for hashed entries.
         if args or kwargs:
-            key_data = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True, default=str)
-            hash_hex = hashlib.sha256(key_data.encode()).hexdigest()[:16]
+            hash_hex = _hash(*args, **kwargs)
             if resolved.suffix:
                 stem = resolved.stem
                 ext = resolved.suffix

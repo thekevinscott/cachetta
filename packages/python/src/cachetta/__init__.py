@@ -7,6 +7,7 @@ from .exceptions import (
     InvalidPathError,
 )
 from .safe_pickle import UnsafePickleError
+from .hash import hash
 
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "CacheCorruptError",
     "InvalidPathError",
     "UnsafePickleError",
+    "hash",
 ]

@@ -143,6 +143,23 @@ get_user(1)   # cached at ./cache/users-<hash1>.json
 get_user(2)   # cached at ./cache/users-<hash2>.json
 ```
 
+### Public `hash` helper
+
+The same digest the auto-keyed path uses is exposed as `cachetta.hash`. Use it when you want to construct cache paths manually (e.g. inside a `path=` lambda that keys on a subset of args) and keep them aligned with cachetta's own keying:
+
+```python
+from cachetta import Cachetta, hash
+
+@Cachetta(path=lambda model, prompt, *, temperature: f'cache/llm/{model}/{hash(prompt)}.pkl')
+def call_llm(model, prompt, *, temperature=0.7):
+    return call_api(model, prompt, temperature=temperature)
+```
+
+`hash(*args, **kwargs)` accepts any inputs (non-JSON-native values fall back to `str()`) and returns a 16-char hex string. It's a pure function — no I/O, no `Cachetta` instance required.
+
+{: .warning }
+> The Python and JS `hash` exports are **not** cross-language portable. They use different stringifiers (`json.dumps(..., default=str)` vs `JSON.stringify`) and the JS variant doesn't fold in `**kwargs`, so the same logical input produces different digests in each language. Use each language's `hash` only to align with that language's own cachetta.
+
 ## In-Memory LRU
 
 Add an in-memory LRU layer that is checked before hitting disk:
