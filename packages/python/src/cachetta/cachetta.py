@@ -101,13 +101,21 @@ class Cachetta:
                 )
             return resolved
 
-        # Auto cache key: hash arguments and embed in the path
+        # Auto cache key: hash arguments and embed in the path.
+        # Paths with an extension are treated as file templates: the hash is
+        # appended to the stem (foo.json -> foo-{hash}.json). Paths without
+        # an extension are treated as directories: the hash becomes a child
+        # filename (foo -> foo/{hash}), so `cache / 'sub'` produces real
+        # subfolder semantics for hashed entries.
         if args or kwargs:
             key_data = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True, default=str)
             hash_hex = hashlib.sha256(key_data.encode()).hexdigest()[:16]
-            stem = resolved.stem
-            ext = resolved.suffix
-            resolved = resolved.with_name("%s-%s%s" % (stem, hash_hex, ext))
+            if resolved.suffix:
+                stem = resolved.stem
+                ext = resolved.suffix
+                resolved = resolved.with_name("%s-%s%s" % (stem, hash_hex, ext))
+            else:
+                resolved = resolved / hash_hex
 
         if ".." in resolved.parts:
             raise InvalidPathError(
@@ -116,8 +124,29 @@ class Cachetta:
 
         return resolved
 
-    def __truediv__(self, other: str | Path) -> "Cachetta":
-        """Support for path-like operations using the / operator."""
+    def __truediv__(self, other) -> "Cachetta":
+        """Support for path-like operations using the / operator.
+
+        Two modes:
+
+        - ``cache / 'sub'`` returns a cache rooted at ``base/sub/``. When
+          combined with auto-hashing (decorating a function that takes
+          args), entries are written *inside* the subdirectory.
+        - ``cache / fn`` accepts a callable that returns a filename or
+          subpath. The callable is invoked at call time with the wrapped
+          function's args and joined onto the cache's base folder. Returned
+          paths are validated against ``..`` traversal via the existing
+          ``InvalidPathError`` check in ``_get_path``.
+        """
+        if callable(other):
+            base = self._get_path()
+
+            def composed(*args, **kwargs):
+                return base / other(*args, **kwargs)
+
+            logger.debug("Cache copy with callable suffix from base: %s", base)
+            return replace(self, path=composed)
+
         new_path = self._get_path() / other
         logger.debug("Cache copy: %s", new_path)
         return replace(self, path=new_path)

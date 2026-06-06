@@ -8,6 +8,20 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Added
+- `Cachetta.__truediv__` (the `/` operator) now accepts a callable as its
+  right-hand operand. `cache / fn` returns a `Cachetta` whose path is
+  resolved at call time as `base / fn(*args, **kwargs)`, suited to
+  custom file layouts (e.g. kind-routing, id-not-hash filenames). The
+  callable's return is validated against `..` traversal.
+
+### Fixed
+- `cache / 'sub'` (string right-hand operand) now produces real
+  subfolder semantics: when the resulting cache is used to auto-hash
+  arguments, entries are written *inside* `base/sub/` rather than as
+  hyphenated `base/sub-{hash}` siblings. More generally, hashed entries
+  for any extension-less path now live inside the directory.
+
 ## [0.6.2] - 2026-04-27
 
 ### Added
