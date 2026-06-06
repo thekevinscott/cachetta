@@ -92,6 +92,28 @@ def describe_cache():
         assert new_cache is not cache
         assert str(new_cache.path) == "foo/bar/baz.json"
 
+    def test_truediv_with_callable_defers_resolution_to_call_time():
+        cache = Cachetta(path="base")
+        new_cache = cache / (lambda x: f"sub/{x}.pkl")
+
+        assert new_cache is not cache
+        assert callable(new_cache.path)
+        resolved = new_cache._get_path("alice")
+        assert resolved == Path("base/sub/alice.pkl")
+
+    def test_truediv_with_string_treats_extensionless_path_as_subdirectory():
+        cache = Cachetta(path="base") / "llm-calls"
+        resolved = cache._get_path("a")
+        assert resolved.parent == Path("base/llm-calls"), (
+            "Expected the hashed entry to live inside the subdirectory, got %s"
+            % resolved
+        )
+
+    def test_truediv_with_callable_rejects_traversal():
+        cache = Cachetta(path="base") / (lambda: "../escape.pkl")
+        with pytest.raises(InvalidPathError, match="Path traversal"):
+            cache._get_path()
+
     def test_it_acts_as_a_decorator(mock_write_cache, mock_read_cache):
         with tempfile.TemporaryDirectory() as t:
             filepath = Path(t) / "foo.json"
