@@ -901,4 +901,60 @@ describe('comprehensive integration tests', () => {
       expect(readCacheSync(cache)).toEqual({ lru: true });
     });
   });
+
+  // Literal string path with args — post sibling-removal semantics (issue #45).
+  // A string path is now used verbatim; arguments to the wrapped function do
+  // not produce a `{name}-{hash}{ext}` sibling. Consumers wanting arg-keyed
+  // caching should use a path function (or `.hashed` once it ships).
+  describe('literal string path with args (issue #45)', () => {
+    it('_getPath returns the literal path regardless of args', () => {
+      const cache = new Cachetta({ path: './data/cache.json' });
+      expect(cache._getPath('arg1')).toBe('./data/cache.json');
+      expect(cache._getPath('arg1', 'arg2')).toBe('./data/cache.json');
+      expect(cache._getPath('a')).toBe(cache._getPath('b'));
+    });
+
+    it('_getPath returns the literal path for extensionless paths', () => {
+      const cache = new Cachetta({ path: './data/cache' });
+      expect(cache._getPath('arg1')).toBe('./data/cache');
+      expect(cache._getPath('a')).toBe(cache._getPath('b'));
+    });
+
+    it('decorator writes only the literal file, no sibling-hash files', async () => {
+      const cachePath = join(tempDir, 'data.json');
+      const cache = new Cachetta({ path: cachePath });
+
+      let callCount = 0;
+      const compute = cache((x: string) => {
+        callCount++;
+        return { x };
+      });
+
+      const r1 = await compute('a');
+      const r2 = await compute('b');
+      const r3 = await compute('a');
+
+      // Only the literal cache file exists — no `data-<hash>.json` siblings.
+      const entries = (await fs.readdir(tempDir)).sort();
+      expect(entries).toEqual(['data.json']);
+
+      // All three calls return the first-written value; the body runs once.
+      expect(r1).toEqual({ x: 'a' });
+      expect(r2).toEqual({ x: 'a' });
+      expect(r3).toEqual({ x: 'a' });
+      expect(callCount).toBe(1);
+    });
+
+    it('invalidate with args removes the literal file', async () => {
+      const cachePath = join(tempDir, 'data.json');
+      const cache = new Cachetta({ path: cachePath });
+
+      const compute = cache((x: string) => ({ x }));
+      await compute('a');
+      await expect(fs.access(cachePath)).resolves.toBeUndefined();
+
+      await cache.invalidate('anything');
+      await expect(fs.access(cachePath)).rejects.toThrow();
+    });
+  });
 });

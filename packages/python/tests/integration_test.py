@@ -1123,3 +1123,77 @@ def describe_zero_negative_duration():
             with read_cache(cache) as result:
                 pass
             assert result is None
+
+
+# -- Literal string/Path with args (post-sibling-removal semantics, issue #45) --
+
+
+def describe_literal_path_with_args():
+    """A str/Path passed as `path` is now treated literally: arguments to the
+    wrapped function do not rewrite the filename into a `{stem}-{hash}{ext}`
+    sibling. Consumers who want arg-keyed caching should use a callable `path`
+    (or `.hashed` once it ships)."""
+
+    def test_get_path_with_args_returns_literal_string_path():
+        cache = Cachetta(path="cache/data.json")
+        assert cache._get_path("arg1") == Path("cache/data.json")
+        assert cache._get_path("arg1", "arg2") == Path("cache/data.json")
+        assert cache._get_path(user="alice") == Path("cache/data.json")
+        # Same path regardless of args
+        assert cache._get_path("a") == cache._get_path("b")
+
+    def test_get_path_with_args_returns_literal_path_object():
+        cache = Cachetta(path=Path("cache/data.json"))
+        assert cache._get_path("arg1") == Path("cache/data.json")
+        assert cache._get_path("a") == cache._get_path("b")
+
+    def test_get_path_with_args_no_extension():
+        cache = Cachetta(path="cache/data")
+        assert cache._get_path("arg1") == Path("cache/data")
+        assert cache._get_path("a") == cache._get_path("b")
+
+    def test_decorator_writes_literal_path_and_serves_first_value():
+        """With `path=str` and args, only the literal file is written; subsequent
+        calls (with any args) read that one file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "data.json"
+            cache = Cachetta(path=str(cache_path))
+
+            call_count = 0
+
+            @cache
+            def compute(x):
+                nonlocal call_count
+                call_count += 1
+                return {"x": x}
+
+            r1 = compute("a")
+            r2 = compute("b")
+            r3 = compute("a")
+
+            # Only the literal cache file exists — no `data-<hash>.json` siblings
+            siblings = sorted(p.name for p in Path(tmpdir).iterdir())
+            assert siblings == ["data.json"]
+
+            # All three calls return the value the first call wrote, the
+            # function body runs only once.
+            assert r1 == {"x": "a"}
+            assert r2 == {"x": "a"}
+            assert r3 == {"x": "a"}
+            assert call_count == 1
+
+    def test_invalidate_with_args_removes_literal_file():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "data.json"
+            cache = Cachetta(path=str(cache_path))
+
+            @cache
+            def compute(x):
+                return {"x": x}
+
+            compute("a")
+            assert cache_path.exists()
+
+            # Args to invalidate should also resolve to the literal path
+            cache.invalidate("anything")
+            assert not cache_path.exists()

@@ -22,6 +22,14 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   Previously only flat `docs/*.md` was synced into the package and any
   subdirectory was silently dropped. (#56)
 
+### Removed
+- **Breaking:** Stopped rewriting string `path` into a `{name}-{hash}{ext}`
+  sibling when the wrapped function is called with arguments. A string
+  `path` is now used verbatim — arguments to the wrapped function no
+  longer affect the cache file. To key cache files by arguments, pass
+  `path` as a function (e.g. `path: (id) => `cache/${id}.json``). See
+  `MIGRATIONS.md` for details.
+
 ### Fixed
 - Restored the compiled `dist/` directory in the published tarball.
   Versions 0.3.1 and 0.3.2 shipped with `dist/` missing — the publish
