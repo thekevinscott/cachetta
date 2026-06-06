@@ -1,5 +1,8 @@
 packages:
   - packages/**
 
-onlyBuiltDependencies:
-  - esbuild
+# esbuild ships a postinstall that fetches its native binary. allowBuilds
+# approves it so `pnpm install` doesn't hard-fail with ERR_PNPM_IGNORED_BUILDS.
+# This is the pnpm 11+ approval field; we standardize on pnpm latest (11+).
+allowBuilds:
+  esbuild: true

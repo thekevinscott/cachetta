@@ -6,11 +6,13 @@ on:
     paths:
       - 'packages/javascript/**'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/js-test.yaml'
   pull_request:
     paths:
       - 'packages/javascript/**'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/js-test.yaml'
 
 env:
