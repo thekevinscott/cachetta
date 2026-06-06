@@ -1,5 +1,13 @@
 packages:
   - packages/**
 
+# esbuild ships a postinstall that fetches its native binary. Both fields below
+# approve it so `pnpm install` doesn't hard-fail with ERR_PNPM_IGNORED_BUILDS:
+#   - onlyBuiltDependencies: honored by pnpm 10.x (local dev / lockfile toolchain)
+#   - allowBuilds: honored by pnpm 11.x (what `version: latest` resolves to in CI)
+# Keep both until the team standardizes on a single pnpm major.
 onlyBuiltDependencies:
   - esbuild
+
+allowBuilds:
+  esbuild: true
