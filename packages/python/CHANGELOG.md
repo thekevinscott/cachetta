@@ -8,6 +8,15 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Changed
+- Both the source distribution and the installed wheel now ship `docs/`
+  **recursively**, so markdown files under nested subdirectories (e.g.
+  `docs/llm/python/index.md`) land in `site-packages/cachetta/docs/`
+  alongside the top-level pages. Previously the `package-data` glob was
+  flat (`docs/*.md`) and the sync script iterated `*.md` non-recursively,
+  so subdirectories were dropped from the wheel and from the per-package
+  `docs/` copy. (#56)
+
 ### Added
 - `Cachetta.__truediv__` (the `/` operator) now accepts a callable as its
   right-hand operand. `cache / fn` returns a `Cachetta` whose path is
