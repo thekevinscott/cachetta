@@ -1,7 +1,49 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { setLogLevel, setLogger, logger } from './logger.js';
 
 describe('logger', () => {
+  describe('getConsoleFn / logAtLevel', () => {
+    afterEach(() => {
+      // Restore default log level so other tests are unaffected
+      setLogLevel('warn');
+      vi.restoreAllMocks();
+    });
+
+    it('routes each level to the matching console method when enabled', () => {
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      // debug is the most verbose level: everything should pass the filter
+      setLogLevel('debug');
+
+      logger.debug('d');
+      logger.info('i');
+      logger.warn('w');
+      logger.error('e');
+
+      expect(debugSpy).toHaveBeenCalledWith('[Cachetta]', 'd');
+      expect(infoSpy).toHaveBeenCalledWith('[Cachetta]', 'i');
+      expect(warnSpy).toHaveBeenCalledWith('[Cachetta]', 'w');
+      expect(errorSpy).toHaveBeenCalledWith('[Cachetta]', 'e');
+    });
+
+    it('suppresses messages below the configured level', () => {
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      // error is the least verbose level: debug should be filtered out
+      setLogLevel('error');
+
+      logger.debug('hidden');
+      logger.error('shown');
+
+      expect(debugSpy).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith('[Cachetta]', 'shown');
+    });
+  });
+
   describe('logger object', () => {
     it('should have debug, info, warn, error methods', () => {
       expect(typeof logger.debug).toBe('function');

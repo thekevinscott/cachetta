@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { writeFileSync, unlinkSync, rmdirSync, mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { getLastUpdated } from './get-last-updated.js';
+import { getLastUpdated, getLastUpdatedSync } from './get-last-updated.js';
 
 describe('getLastUpdated', () => {
   let tempDir: string;
@@ -81,5 +81,50 @@ describe('getLastUpdated', () => {
     // This will likely return null since we're using temp files
     // but the function should handle it gracefully
     expect(typeof timestamp === 'number' || timestamp === null).toBe(true);
+  });
+
+  test('should rethrow non-ENOENT errors', async () => {
+    // Create a regular file, then stat a path that treats it as a directory.
+    // This yields ENOTDIR, which must be rethrown rather than swallowed.
+    writeFileSync(testFilePath, 'test content');
+    const badPath = join(testFilePath, 'child.txt');
+
+    await expect(getLastUpdated(badPath)).rejects.toMatchObject({ code: 'ENOTDIR' });
+  });
+});
+
+describe('getLastUpdatedSync', () => {
+  let tempDir: string;
+  let testFilePath: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'cachetta-test-'));
+    testFilePath = join(tempDir, 'test-file.txt');
+  });
+
+  afterEach(() => {
+    try {
+      unlinkSync(testFilePath);
+      rmdirSync(tempDir);
+    } catch {
+      // Cleanup failed, which is fine
+    }
+  });
+
+  test('should return null for non-existent file', () => {
+    expect(getLastUpdatedSync(join(tempDir, 'nope.txt'))).toBe(null);
+  });
+
+  test('should return timestamp for existing file', () => {
+    writeFileSync(testFilePath, 'test content');
+    const timestamp = getLastUpdatedSync(testFilePath);
+    expect(timestamp).toBeTypeOf('number');
+    expect(timestamp).toBeGreaterThan(0);
+  });
+
+  test('should rethrow non-ENOENT errors', () => {
+    writeFileSync(testFilePath, 'test content');
+    const badPath = join(testFilePath, 'child.txt');
+    expect(() => getLastUpdatedSync(badPath)).toThrow();
   });
 });

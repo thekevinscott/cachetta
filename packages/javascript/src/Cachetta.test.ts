@@ -445,4 +445,191 @@ describe('Cachetta', () => {
       expect(result.stale).toBe(false); // past duration + staleDuration
     });
   });
+
+  describe('invalidate (error propagation)', () => {
+    it('should rethrow non-ENOENT errors', async () => {
+      const cache = new Cachetta({ path: './test.json' });
+      const spy = vi.spyOn(fs, 'unlink').mockRejectedValue(
+        Object.assign(new Error('boom'), { code: 'EACCES' }),
+      );
+      await expect(cache.invalidate()).rejects.toThrow('boom');
+      spy.mockRestore();
+    });
+  });
+
+  describe('_lruGet expiry', () => {
+    it('should evict and return LRU_MISS when entry is older than duration', () => {
+      const cache = new Cachetta({ path: './test.json', lruSize: 10, duration: 1000 });
+      cache._lruSet('key1', 'value1');
+      // Force the stored timestamp to be older than the duration
+      const entry = cache._lru!.get('key1')!;
+      entry.timestamp = Date.now() - 5000;
+      expect(cache._lruGet('key1')).toBe(LRU_MISS);
+      expect(cache._lru!.has('key1')).toBe(false);
+    });
+  });
+
+  describe('wrapSync', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp('cachetta-test-');
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it('should wrap a sync function and cache its result', () => {
+      const cachePath = join(tempDir, 'wrap-sync.json');
+      const cache = new Cachetta({ path: cachePath });
+      const fn = vi.fn(() => 'sync value');
+
+      const wrapped = cache.wrapSync(fn);
+      expect(wrapped()).toBe('sync value');
+      expect(fn).toHaveBeenCalledTimes(1);
+
+      // Second call should hit the cache, not the original function
+      expect(wrapped()).toBe('sync value');
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('sync methods', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp('cachetta-test-');
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it('invalidateSync should delete the cache file and clear the LRU entry', async () => {
+      const cachePath = join(tempDir, 'sync-inv.json');
+      await fs.writeFile(cachePath, '{"data":1}');
+
+      const cache = new Cachetta({ path: cachePath, lruSize: 10, duration: 60000 });
+      cache._lruSet(cachePath, { data: 1 });
+      cache.invalidateSync();
+
+      expect(cache._lruGet(cachePath)).toBe(LRU_MISS);
+      await expect(fs.access(cachePath)).rejects.toThrow();
+    });
+
+    it('invalidateSync should not throw when the file does not exist', () => {
+      const cache = new Cachetta({ path: join(tempDir, 'missing-sync.json') });
+      expect(() => cache.invalidateSync()).not.toThrow();
+    });
+
+    it('invalidateSync should rethrow non-ENOENT errors', async () => {
+      // Point at a non-empty directory so unlinkSync fails with a
+      // non-ENOENT error (EISDIR/EPERM/ENOTEMPTY depending on platform).
+      const dirPath = join(tempDir, 'inv-sync-dir');
+      await fs.mkdir(dirPath);
+      await fs.writeFile(join(dirPath, 'child'), 'x');
+
+      const cache = new Cachetta({ path: dirPath });
+      expect(() => cache.invalidateSync()).toThrow();
+    });
+
+    it('existsSync should reflect file presence', async () => {
+      const cachePath = join(tempDir, 'exists-sync.json');
+      const cache = new Cachetta({ path: cachePath });
+      expect(cache.existsSync()).toBe(false);
+      await fs.writeFile(cachePath, '{"data":1}');
+      expect(cache.existsSync()).toBe(true);
+    });
+
+    it('ageSync should return age for existing file and null otherwise', async () => {
+      const cachePath = join(tempDir, 'age-sync.json');
+      const cache = new Cachetta({ path: cachePath });
+      expect(cache.ageSync()).toBeNull();
+      await fs.writeFile(cachePath, '{"data":1}');
+      const age = cache.ageSync();
+      expect(age).toBeGreaterThanOrEqual(0);
+      expect(age).toBeLessThan(5000);
+    });
+
+    it('infoSync should return info for nonexistent file', () => {
+      const cachePath = join(tempDir, 'info-sync-missing.json');
+      const cache = new Cachetta({ path: cachePath });
+      const result = cache.infoSync();
+      expect(result.exists).toBe(false);
+      expect(result.age).toBeNull();
+      expect(result.expired).toBe(false);
+      expect(result.stale).toBe(false);
+      expect(result.path).toBe(cachePath);
+    });
+
+    it('infoSync should report fresh, expired, stale states', async () => {
+      const cachePath = join(tempDir, 'info-sync.json');
+      await fs.writeFile(cachePath, '{"data":1}');
+
+      const freshCache = new Cachetta({ path: cachePath, duration: 60000 });
+      const fresh = freshCache.infoSync();
+      expect(fresh.exists).toBe(true);
+      expect(fresh.expired).toBe(false);
+      expect(fresh.stale).toBe(false);
+
+      // Make it old enough to be stale (expired but within stale window)
+      const oldTime = new Date(Date.now() - 5000);
+      await fs.utimes(cachePath, oldTime, oldTime);
+      const staleCache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
+      const stale = staleCache.infoSync();
+      expect(stale.expired).toBe(true);
+      expect(stale.stale).toBe(true);
+    });
+  });
+
+  describe('call (decorator and config paths)', () => {
+    it('should return a copy when called with a partial config', () => {
+      const cache = new Cachetta({ path: './test.json' });
+      const result = (cache as unknown as (cfg: Partial<CacheConfig>) => Cachetta)({ duration: 1234 });
+      // The constructor returns a callable bound function rather than a raw
+      // class instance, so assert on the observable copied config instead.
+      expect(typeof result).toBe('function');
+      expect(result.duration).toBe(1234);
+      expect(result.path).toBe('./test.json');
+    });
+
+    it('should wrap a method via the descriptor (decorator) path', () => {
+      const cache = new Cachetta({ path: './test.json' });
+      vi.mocked(cacheFn).mockReturnValue(() => Promise.resolve('wrapped'));
+
+      const original = () => 'orig';
+      const descriptor: PropertyDescriptor = { value: original, writable: true, configurable: true };
+      const callable = cache as unknown as (
+        t: unknown,
+        key: string,
+        d: PropertyDescriptor,
+      ) => PropertyDescriptor;
+
+      const result = callable(original, 'myMethod', descriptor);
+      expect(result).toBe(descriptor);
+      expect(cacheFn).toHaveBeenCalledTimes(1);
+      // descriptor.value should now be the wrapped function from cacheFn
+      expect(cacheFn).toHaveBeenCalledWith(expect.anything(), original);
+    });
+
+    it('should wrap a function with a config when propertyKey is a config object', () => {
+      const cache = new Cachetta({ path: './test.json' });
+      vi.mocked(cacheFn).mockReturnValue(() => Promise.resolve('wrapped'));
+
+      const original = () => 'orig';
+      const callable = cache as unknown as (
+        fn: () => string,
+        key: Partial<CacheConfig>,
+      ) => unknown;
+
+      const result = callable(original, { duration: 999 } as Partial<CacheConfig>);
+      expect(result).toBeDefined();
+      expect(cacheFn).toHaveBeenCalledTimes(1);
+      // The Cachetta passed to cacheFn should be a copy with the new duration
+      const passedCache = vi.mocked(cacheFn).mock.calls[0][0] as Cachetta;
+      expect(passedCache.duration).toBe(999);
+      expect(vi.mocked(cacheFn).mock.calls[0][1]).toBe(original);
+    });
+  });
 });

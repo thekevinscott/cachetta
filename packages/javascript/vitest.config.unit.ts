@@ -12,7 +12,7 @@ export default defineConfig({
       exclude: ['src/**/*.test.ts', 'src/index.ts', 'src/types.ts'],
       reporter: ['text', 'cobertura'],
       reportsDirectory: './coverage',
-      thresholds: { lines: 81 },
+      thresholds: { lines: 100, branches: 100, functions: 100, statements: 100 },
     },
   },
 });

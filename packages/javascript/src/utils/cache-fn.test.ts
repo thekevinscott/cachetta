@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { cacheFn } from './cache-fn.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { cacheFn, cacheFnSync } from './cache-fn.js';
 import { Cachetta } from '../Cachetta.js';
 import { readCache, readStaleCache } from '../read-cache.js';
 import { writeCache } from '../write-cache.js';
@@ -238,6 +240,32 @@ describe('cacheFn', () => {
       });
     });
 
+    it('should evaluate the condition during a background refresh', async () => {
+      const condition = vi.fn((result: unknown) => result === 'fresh result');
+      const cache = new Cachetta({
+        path: './test-cache.json',
+        staleDuration: 30000,
+        condition,
+      });
+      const originalMethod = vi.fn().mockResolvedValue('fresh result');
+
+      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readStaleCache).mockResolvedValue('stale result');
+      vi.mocked(writeCache).mockResolvedValue(undefined);
+
+      const wrappedFn = cacheFn(cache, originalMethod);
+      const result = await wrappedFn.call({});
+      expect(result).toBe('stale result');
+
+      // The background refresh must consult the condition before writing.
+      await vi.waitFor(() => {
+        expect(condition).toHaveBeenCalledWith('fresh result');
+      });
+      await vi.waitFor(() => {
+        expect(writeCache).toHaveBeenCalled();
+      });
+    });
+
     it('should fall through to normal fetch when no stale data', async () => {
       const cache = new Cachetta({
         path: './test-cache.json',
@@ -293,5 +321,120 @@ describe('cacheFn', () => {
       expect(result2).toBe('fresh result');
       expect(callCount).toBe(2);
     });
+  });
+
+  describe('in-flight deduplication', () => {
+    it('should return the existing in-flight promise for concurrent identical calls', async () => {
+      const cache = new Cachetta({ path: './test-cache.json' });
+
+      let resolveOriginal: (value: string) => void = () => {};
+      const originalMethod = vi.fn().mockImplementation(
+        () => new Promise<string>((resolve) => { resolveOriginal = resolve; }),
+      );
+
+      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(writeCache).mockResolvedValue(undefined);
+
+      const wrappedFn = cacheFn(cache, originalMethod);
+
+      // Fire two concurrent calls with the same cache key.
+      const p1 = wrappedFn.call({});
+      const p2 = wrappedFn.call({});
+
+      // Let the microtasks settle so both callers pass the readCache await and
+      // the in-flight promise is registered before the original method resolves.
+      await vi.waitFor(() => {
+        expect(originalMethod).toHaveBeenCalledTimes(1);
+      });
+      resolveOriginal('dedup result');
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+      expect(r1).toBe('dedup result');
+      expect(r2).toBe('dedup result');
+      // The original method should only run once thanks to in-flight dedup.
+      expect(originalMethod).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe('cacheFnSync', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp('cachetta-test-');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('should call the original method and cache the result on a miss', () => {
+    const cachePath = join(tempDir, 'sync.json');
+    const cache = new Cachetta({ path: cachePath });
+    const originalMethod = vi.fn().mockReturnValue('sync result');
+
+    const wrapped = cacheFnSync(cache, originalMethod);
+    expect(wrapped.call({})).toBe('sync result');
+    expect(originalMethod).toHaveBeenCalledTimes(1);
+  });
+
+  it('should return cached data without calling the original method', () => {
+    const cachePath = join(tempDir, 'sync-hit.json');
+    const cache = new Cachetta({ path: cachePath, duration: 60000 });
+    const originalMethod = vi.fn().mockReturnValue('fresh');
+
+    const wrapped = cacheFnSync(cache, originalMethod);
+    expect(wrapped.call({})).toBe('fresh');
+    // Second call hits the on-disk cache.
+    expect(wrapped.call({})).toBe('fresh');
+    expect(originalMethod).toHaveBeenCalledTimes(1);
+  });
+
+  it('should skip the cache write when the condition returns false', async () => {
+    const cachePath = join(tempDir, 'sync-cond.json');
+    const cache = new Cachetta({ path: cachePath, condition: () => false });
+    const originalMethod = vi.fn().mockReturnValue('uncached');
+
+    const wrapped = cacheFnSync(cache, originalMethod);
+    expect(wrapped.call({})).toBe('uncached');
+    await expect(fs.access(cachePath)).rejects.toThrow();
+  });
+
+  it('should return stale data when within the stale window', async () => {
+    const cachePath = join(tempDir, 'sync-stale.json');
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
+    const originalMethod = vi.fn().mockReturnValue('first');
+
+    const wrapped = cacheFnSync(cache, originalMethod);
+    // Prime the cache.
+    expect(wrapped.call({})).toBe('first');
+    expect(originalMethod).toHaveBeenCalledTimes(1);
+
+    // Age the file so it is expired but within the stale window.
+    const oldTime = new Date(Date.now() - 5000);
+    await fs.utimes(cachePath, oldTime, oldTime);
+
+    // The stale read returns the original data; sync has no background refresh.
+    expect(wrapped.call({})).toBe('first');
+    expect(originalMethod).toHaveBeenCalledTimes(1);
+  });
+
+  it('should fall through to a fresh call when stale data is unavailable', async () => {
+    const cachePath = join(tempDir, 'sync-no-stale.json');
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 5000 });
+    let callCount = 0;
+    const originalMethod = vi.fn().mockImplementation(() => `result-${++callCount}`);
+
+    const wrapped = cacheFnSync(cache, originalMethod);
+    expect(wrapped.call({})).toBe('result-1');
+
+    // Age the file past both duration and the stale window.
+    const oldTime = new Date(Date.now() - 60000);
+    await fs.utimes(cachePath, oldTime, oldTime);
+
+    expect(wrapped.call({})).toBe('result-2');
+    expect(originalMethod).toHaveBeenCalledTimes(2);
   });
 });

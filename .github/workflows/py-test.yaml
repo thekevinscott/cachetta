@@ -33,12 +33,12 @@ jobs:
         working-directory: packages/python
         run: uv run pytest -x -v
 
-      # Requirement (2): total unit-suite coverage must not drop below the
-      # current baseline. Integration tests are excluded (-m "not integration")
-      # and the XML report feeds the patch-coverage step below.
-      - name: Unit coverage floor
+      # The unit suite must be 100% covered, including branches (--cov-branch).
+      # Integration tests are excluded (-m "not integration") and the XML
+      # report feeds the patch-coverage step below.
+      - name: Unit coverage (100%, incl. branches)
         working-directory: packages/python
-        run: uv run pytest -m "not integration" --cov=cachetta --cov-report=xml --cov-fail-under=92
+        run: uv run pytest -m "not integration" --cov=cachetta --cov-branch --cov-report=xml --cov-fail-under=100
 
       # Requirement (1): every line added/changed in this PR must be covered
       # by the unit suite. Integration-only coverage does not count, because
