@@ -255,3 +255,125 @@ def describe_sync_wrapper_stale_while_revalidate():
 
             with pytest.raises(ValueError, match="sync boom"):
                 compute()
+
+    def test_skips_write_when_condition_returns_false():
+        """Sync wrapper: read miss, fn runs, but _should_cache is False so
+        write_cache is not called and the result is still returned (arc
+        113->121)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "cond.dat"
+            cache = Cachetta(path=str(path), condition=lambda result: False)
+
+            @cache
+            def compute():
+                return {"value": 2}
+
+            result = compute()
+            assert result == {"value": 2}
+            assert not path.exists()
+
+
+def describe_async_wrapper_core():
+    async def test_returns_cached_data_on_hit():
+        """Async wrapper: a fresh cache file exists, so async_read_cache yields
+        data and the wrapped fn is never executed (lines 42-43)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "hit.json"
+            _write_pickle(path, {"cached": True})  # fresh -> read hit
+            cache = Cachetta(path=str(path))
+
+            calls = 0
+
+            @cache
+            async def compute():
+                nonlocal calls
+                calls += 1
+                return {"fresh": True}
+
+            result = await compute()
+            assert result == {"cached": True}
+            assert calls == 0
+
+    async def test_deduplicates_concurrent_call_without_stale_duration():
+        """Async wrapper with no stale_duration: read miss falls straight through
+        to the in-flight check (arc 48->66); an existing in-flight task is
+        awaited via asyncio.shield (lines 68-69)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/dedup.json")  # no stale_duration
+
+            @cache
+            async def compute():
+                return {"computed": True}
+
+            cache_key = str(cache._get_path())
+
+            async def _inflight():
+                await asyncio.sleep(0.05)
+                return {"inflight": True}
+
+            task = asyncio.ensure_future(_inflight())
+            _in_flight[cache_key] = task
+            try:
+                result = await compute()
+            finally:
+                _in_flight.pop(cache_key, None)
+                await task
+
+            assert result == {"inflight": True}
+
+    async def test_background_refresh_writes_when_condition_allows():
+        """Async wrapper: stale data is returned and the background refresh runs
+        the fn and writes the new value because _should_cache is True (line
+        56)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "sw.json"
+            _make_stale_file(path, {"stale": True})
+
+            cache = Cachetta(
+                path=str(path),
+                duration=timedelta(seconds=1),
+                stale_duration=timedelta(days=1),
+            )
+
+            @cache
+            async def compute():
+                return {"refreshed": True}
+
+            cache_key = str(cache._get_path())
+            result = await compute()
+            assert result == {"stale": True}
+
+            task = _in_flight.get(cache_key)
+            if task is not None:
+                await task
+
+            with open(path, "rb") as f:
+                assert pickle.load(f) == {"refreshed": True}
+
+    async def test_execute_skips_write_when_condition_false():
+        """Async wrapper: read miss, fn runs, _should_cache is False so
+        async_write_cache is not awaited (arc 75->78)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "cond.json"
+            cache = Cachetta(path=str(path), condition=lambda result: False)
+
+            @cache
+            async def compute():
+                return {"value": 1}
+
+            result = await compute()
+            assert result == {"value": 1}
+            assert not path.exists()
+
+    async def test_execute_logs_and_reraises_exception():
+        """Async wrapper: read miss, the fn raises inside _execute, so the error
+        is logged and re-raised to the caller (lines 79-81)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/err.json")
+
+            @cache
+            async def compute():
+                raise ValueError("async boom")
+
+            with pytest.raises(ValueError, match="async boom"):
+                await compute()

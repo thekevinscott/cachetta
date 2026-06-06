@@ -1,6 +1,6 @@
 from datetime import datetime
 import tempfile
-from cachetta.utils.get_last_updated import get_last_updated
+from cachetta.utils.get_last_updated import get_last_updated, async_get_last_updated
 
 
 def describe_get_last_updated():
@@ -37,3 +37,13 @@ def describe_get_last_updated():
             timestamp = get_last_updated(f.name)
             assert timestamp is not None
             assert isinstance(timestamp, float)
+
+
+def describe_async_get_last_updated():
+    async def test_returns_timestamp_for_existing_file():
+        with tempfile.NamedTemporaryFile() as f:
+            timestamp = await async_get_last_updated(f.name)
+            assert isinstance(timestamp, float)
+
+    async def test_returns_none_for_missing_file():
+        assert await async_get_last_updated("nonexistent_file.txt") is None
