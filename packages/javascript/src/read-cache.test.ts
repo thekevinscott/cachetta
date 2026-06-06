@@ -6,6 +6,7 @@ import { readCache, readCacheSync, readStaleCache, readStaleCacheSync } from './
 import { writeCache, writeCacheSync } from './write-cache.js';
 import { Cachetta } from './Cachetta.js';
 import { CachettaError, InvalidPathError } from './errors.js';
+import * as shouldUseReadCacheModule from './utils/should-use-read-cache.js';
 
 
 describe('readCache', () => {
@@ -112,6 +113,24 @@ describe('readCache', () => {
 
     await expect(readCache(cache)).rejects.toThrow(InvalidPathError);
   });
+
+  it('should return the value from the LRU cache without touching disk', () => {
+    const cachePath = join(tempDir, 'lru-async.json');
+    const cache = new Cachetta({ path: cachePath, lruSize: 10, duration: 60000 });
+    // Prime the LRU; the file does not exist so a disk read would return null.
+    cache._lruSet(cachePath, { fromLru: true });
+    return expect(readCache(cache)).resolves.toEqual({ fromLru: true });
+  });
+
+  it('should return null when the file vanishes after the freshness check (ENOENT in readCacheFile)', async () => {
+    const cachePath = join(tempDir, 'vanishing.json');
+    const cache = new Cachetta({ path: cachePath, read: true });
+    // Force the freshness gate to pass even though the file is absent,
+    // so we reach readCacheFile and hit its ENOENT branch.
+    vi.spyOn(shouldUseReadCacheModule, 'shouldUseReadCache').mockResolvedValue(true);
+
+    expect(await readCache(cache)).toBeNull();
+  });
 });
 
 describe('readCacheSync', () => {
@@ -153,6 +172,24 @@ describe('readCacheSync', () => {
   it('should reject paths with traversal segments', () => {
     const cache = new Cachetta({ path: '../etc/passwd' });
     expect(() => readCacheSync(cache)).toThrow(InvalidPathError);
+  });
+
+  it('should return the value from the LRU cache without touching disk', async () => {
+    const cachePath = join(tempDir, 'sync-lru.json');
+    const cache = new Cachetta({ path: cachePath, lruSize: 10, duration: 60000 });
+    // Prime the LRU; the file does not exist so a disk read would return null.
+    cache._lruSet(cachePath, { fromLru: true });
+    expect(readCacheSync(cache)).toEqual({ fromLru: true });
+  });
+
+  it('should return null when the file vanishes after the freshness check (ENOENT in readCacheFileSync)', () => {
+    const cachePath = join(tempDir, 'sync-vanishing.json');
+    const cache = new Cachetta({ path: cachePath, read: true });
+    // Force the freshness gate to pass even though the file is absent,
+    // so we reach readCacheFileSync and hit its ENOENT branch.
+    vi.spyOn(shouldUseReadCacheModule, 'shouldUseReadCacheSync').mockReturnValue(true);
+
+    expect(readCacheSync(cache)).toBeNull();
   });
 });
 
@@ -244,5 +281,21 @@ describe('readStaleCacheSync', () => {
     await fs.utimes(cachePath, oldTime, oldTime);
 
     expect(readStaleCacheSync(cache)).toEqual(testData);
+  });
+
+  it('should return null when past both duration and staleDuration', async () => {
+    const cachePath = join(tempDir, 'test.json');
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 5000 });
+    writeCacheSync(cache, { data: 1 });
+    // 60s ago is well past the 1s duration + 5s stale window.
+    const oldTime = new Date(Date.now() - 60000);
+    await fs.utimes(cachePath, oldTime, oldTime);
+
+    expect(readStaleCacheSync(cache)).toBeNull();
+  });
+
+  it('should return null when file does not exist', () => {
+    const cache = new Cachetta({ path: join(tempDir, 'missing-sync.json'), duration: 1000, staleDuration: 5000 });
+    expect(readStaleCacheSync(cache)).toBeNull();
   });
 });

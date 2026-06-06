@@ -1,10 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { promises as fs } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { promises as fs, renameSync as realRenameSync, unlinkSync as realUnlinkSync } from 'fs';
 import { join } from 'path';
 import { deserialize } from 'v8';
 import { writeCache, writeCacheSync } from './write-cache.js';
 import { Cachetta } from './Cachetta.js';
 import { InvalidPathError } from './errors.js';
+import type * as _fs from 'fs';
+
+// Wrap the sync fs primitives in spies so individual tests can force failures
+// in the atomic-write/cleanup path while everything else uses the real fs.
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof _fs>('fs');
+  return {
+    ...actual,
+    renameSync: vi.fn(actual.renameSync),
+    unlinkSync: vi.fn(actual.unlinkSync),
+  };
+});
 
 describe('writeCache', () => {
   let tempDir: string;
@@ -141,6 +153,36 @@ describe('writeCache', () => {
     const buffer = await fs.readFile(cachePath);
     expect(deserialize(buffer)).toEqual(testData);
   });
+
+  it('should clean up the temp file and rethrow when the rename fails', async () => {
+    // Make the destination an existing directory so the atomic rename fails.
+    const cachePath = join(tempDir, 'dir-collision');
+    await fs.mkdir(cachePath);
+    await fs.writeFile(join(cachePath, 'placeholder'), 'x');
+
+    const cache = new Cachetta({ path: cachePath, write: true });
+
+    await expect(writeCache(cache, { data: 1 })).rejects.toThrow();
+
+    // No temp files should be left behind after the failure.
+    const files = await fs.readdir(tempDir);
+    expect(files.filter(f => f.endsWith('.tmp'))).toHaveLength(0);
+  });
+
+  it('should swallow a temp-file cleanup failure and still rethrow the original error', async () => {
+    const cachePath = join(tempDir, 'cleanup-fail.json');
+    const cache = new Cachetta({ path: cachePath, write: true });
+
+    // Make the rename fail to trigger the cleanup path...
+    const renameSpy = vi.spyOn(fs, 'rename').mockRejectedValue(new Error('rename boom'));
+    // ...and make the cleanup unlink fail too, exercising the ignored catch.
+    const unlinkSpy = vi.spyOn(fs, 'unlink').mockRejectedValue(new Error('unlink boom'));
+
+    await expect(writeCache(cache, { data: 1 })).rejects.toThrow('rename boom');
+
+    renameSpy.mockRestore();
+    unlinkSpy.mockRestore();
+  });
 });
 
 describe('writeCacheSync', () => {
@@ -182,5 +224,34 @@ describe('writeCacheSync', () => {
   it('should reject paths with traversal segments', () => {
     const cache = new Cachetta({ path: '../etc/evil.json', write: true });
     expect(() => writeCacheSync(cache, { key: 'value' })).toThrow(InvalidPathError);
+  });
+
+  it('should clean up the temp file and rethrow when the rename fails', async () => {
+    const cachePath = join(tempDir, 'sync-dir-collision');
+    await fs.mkdir(cachePath);
+    await fs.writeFile(join(cachePath, 'placeholder'), 'x');
+
+    const cache = new Cachetta({ path: cachePath, write: true });
+
+    expect(() => writeCacheSync(cache, { data: 1 })).toThrow();
+
+    const files = await fs.readdir(tempDir);
+    expect(files.filter(f => f.endsWith('.tmp'))).toHaveLength(0);
+  });
+
+  it('should swallow a temp-file cleanup failure and still rethrow the original error', () => {
+    const cachePath = join(tempDir, 'sync-cleanup-fail.json');
+    const cache = new Cachetta({ path: cachePath, write: true });
+
+    // Make the rename fail to trigger the cleanup path...
+    vi.mocked(realRenameSync).mockImplementationOnce(() => {
+      throw new Error('rename boom');
+    });
+    // ...and make the cleanup unlink fail too, exercising the ignored catch.
+    vi.mocked(realUnlinkSync).mockImplementationOnce(() => {
+      throw new Error('unlink boom');
+    });
+
+    expect(() => writeCacheSync(cache, { data: 1 })).toThrow('rename boom');
   });
 });
