@@ -4,9 +4,12 @@ import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
 import { validateCachePath } from './utils/validate-cache-path.js';
 import { promises as fs, unlinkSync } from 'fs';
+import { join } from 'path';
 import { inspect } from 'util';
 
 import { LRU_MISS } from './constants.js';
+import { CachettaError, InvalidPathError } from './errors.js';
+import { hash } from './hash.js';
 
 const DEFAULT_DURATION = 7 * 24 * 60 * 60 * 1000; // Default 7 days in milliseconds
 
@@ -47,6 +50,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
         copy: this.copy.bind(this),
         wrap: this.wrap.bind(this),
         wrapSync: this.wrapSync.bind(this),
+        hashed: this.hashed.bind(this),
         invalidate: this.invalidate.bind(this),
         invalidateSync: this.invalidateSync.bind(this),
         clear: this.invalidate.bind(this), // alias
@@ -88,6 +92,35 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   wrapSync(fn: CachableFunctionSync): CachableFunctionSync {
     return cacheFnSync(this as Cachetta, fn);
+  }
+
+  hashed(fn: CachableFunction, opts?: { key?: (...args: unknown[]) => string }): CachableFunction {
+    const key = opts?.key;
+    if (typeof this.path !== 'string') {
+      throw new CachettaError('hashed() requires path to be a string, not a callable');
+    }
+    const base = this.path;
+    const pathFn: PathFn = (...args: unknown[]) => {
+      let keyStr: string;
+      if (key) {
+        keyStr = key(...args);
+        if (typeof keyStr !== 'string') {
+          throw new CachettaError(`key callable must return a string, got ${typeof keyStr}`);
+        }
+        if (
+          keyStr === '' || keyStr === '.' || keyStr === '..' ||
+          keyStr.includes('/') || keyStr.includes('\\') ||
+          keyStr.includes('..') || keyStr.includes('\x00')
+        ) {
+          throw new InvalidPathError(`key must be a single safe path segment, got ${JSON.stringify(keyStr)}`);
+        }
+      } else {
+        keyStr = hash(...args);
+      }
+      return join(base, keyStr);
+    };
+    const newCache = this.copy({ path: pathFn });
+    return cacheFn(newCache as unknown as Cachetta, fn);
   }
 
   async invalidate(...args: unknown[]): Promise<void> {

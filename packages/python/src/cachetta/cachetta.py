@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional
 from pathlib import Path
 from .exceptions import CachettaError, InvalidPathError
 from ._sentinel import _LRU_MISS
+from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
 from .utils.get_last_updated import async_get_last_updated
 
@@ -174,6 +175,61 @@ class Cachetta:
             A cached version of the function.
         """
         return cache_fn(self, fn)
+
+    def hashed(
+        self,
+        fn: Optional[Callable] = None,
+        *,
+        key: Optional[Callable[..., str]] = None,
+    ) -> Callable:
+        """Decorator that writes one file per arg-hash inside the folder named by `path`.
+
+        Files are written at ``{path}/{hash}``.
+        Use ``key=`` to supply a custom single-segment filename instead of the hash.
+
+        Usage::
+
+            cache = Cachetta(path="/cache/llm")
+
+            @cache.hashed
+            def call(prompt): ...
+
+            @cache.hashed(key=lambda *a: f"id-{a[0]}")
+            def call(x): ...
+        """
+        if callable(self.path):
+            raise CachettaError(
+                "hashed() requires path to be a string or Path, not a callable"
+            )
+
+        base = self.path
+
+        def _path_fn(*args, **kwargs) -> Path:
+            if key is not None:
+                key_str = key(*args, **kwargs)
+                if not isinstance(key_str, str):
+                    raise CachettaError(
+                        "key callable must return a string, got %r" % type(key_str).__name__
+                    )
+                if (
+                    key_str in ("", ".", "..")
+                    or "/" in key_str
+                    or "\\" in key_str
+                    or ".." in key_str
+                    or "\x00" in key_str
+                ):
+                    raise InvalidPathError(
+                        "key must be a single safe path segment, got %r" % key_str
+                    )
+            else:
+                key_str = _hash(*args, **kwargs)
+            return Path(base) / key_str
+
+        cache = self.copy(path=_path_fn)
+
+        if fn is None:
+            return lambda f: cache_fn(cache, f)
+        return cache_fn(cache, fn)
 
     def copy(self, **kwargs) -> "Cachetta":
         """Creates a copy of this Cachetta instance with overridden configuration.
