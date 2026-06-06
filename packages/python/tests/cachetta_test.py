@@ -676,3 +676,98 @@ def describe_async_instance_methods():
             ).ainfo()
             assert past["expired"] is True
             assert past["stale"] is False
+
+
+def _capture_hashed_cache(cache, **kwargs):
+    """Helper: call cache.hashed(...) while replacing the internal cache_fn so
+    we can grab the derived (copy-with-path-fn) cache before it is wrapped.
+    Returns the inner Cachetta so tests can drive `_get_path` directly.
+    """
+    captured: list = []
+
+    def fake_cache_fn(c, fn):
+        captured.append(c)
+        return fn
+
+    with patch("cachetta.cachetta.cache_fn", side_effect=fake_cache_fn):
+        cache.hashed(lambda x: x, **kwargs)
+    assert len(captured) == 1
+    return captured[0]
+
+
+def describe_hashed():
+    """Unit tests for `Cachetta.hashed`: decoration-time validation and the
+    inner path function that derives `{path}/{key}`.
+    """
+
+    def test_returns_callable_when_fn_given():
+        cache = Cachetta(path="cache")
+        wrapped = cache.hashed(lambda x: x)
+        assert callable(wrapped)
+
+    def test_returns_decorator_factory_when_no_fn():
+        cache = Cachetta(path="cache")
+        deco = cache.hashed()
+        assert callable(deco)
+        wrapped = deco(lambda x: x)
+        assert callable(wrapped)
+
+    def test_callable_path_rejected():
+        cache = Cachetta(path=lambda: "x")
+        with pytest.raises(CachettaError, match="path to be a string"):
+            cache.hashed(lambda x: x)
+
+    def test_default_is_bare_hash_under_path():
+        inner = _capture_hashed_cache(Cachetta(path="cache"))
+        from cachetta.hash import hash as h
+        assert inner._get_path("hello") == Path("cache") / h("hello")
+
+    def test_key_callable_produces_custom_filename():
+        inner = _capture_hashed_cache(Cachetta(path="cache"), key=lambda x: f"id-{x}")
+        assert inner._get_path(42) == Path("cache") / "id-42"
+
+    def test_key_returning_non_string_raises():
+        inner = _capture_hashed_cache(Cachetta(path="cache"), key=lambda x: 123)
+        with pytest.raises(CachettaError, match="key callable must return a string"):
+            inner._get_path("a")
+
+    def test_key_rejects_empty():
+        inner = _capture_hashed_cache(Cachetta(path="cache"), key=lambda x: "")
+        with pytest.raises(InvalidPathError, match="single safe path segment"):
+            inner._get_path("a")
+
+    def test_key_rejects_dot():
+        inner = _capture_hashed_cache(Cachetta(path="cache"), key=lambda x: ".")
+        with pytest.raises(InvalidPathError):
+            inner._get_path("a")
+
+    def test_key_rejects_dotdot():
+        inner = _capture_hashed_cache(Cachetta(path="cache"), key=lambda x: "..")
+        with pytest.raises(InvalidPathError):
+            inner._get_path("a")
+
+    def test_key_rejects_slash():
+        inner = _capture_hashed_cache(Cachetta(path="cache"), key=lambda x: "sub/dir")
+        with pytest.raises(InvalidPathError):
+            inner._get_path("a")
+
+    def test_key_rejects_backslash():
+        inner = _capture_hashed_cache(
+            Cachetta(path="cache"), key=lambda x: "back\\slash"
+        )
+        with pytest.raises(InvalidPathError):
+            inner._get_path("a")
+
+    def test_key_rejects_nullbyte():
+        inner = _capture_hashed_cache(
+            Cachetta(path="cache"), key=lambda x: "null\x00byte"
+        )
+        with pytest.raises(InvalidPathError):
+            inner._get_path("a")
+
+    def test_key_rejects_traversal_embedded():
+        inner = _capture_hashed_cache(
+            Cachetta(path="cache"), key=lambda x: "foo..bar"
+        )
+        with pytest.raises(InvalidPathError):
+            inner._get_path("a")

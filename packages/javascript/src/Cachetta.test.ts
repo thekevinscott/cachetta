@@ -252,6 +252,65 @@ describe('Cachetta', () => {
     });
   });
 
+  describe('hashed', () => {
+    // Capture the inner Cachetta that `hashed` passes to cacheFn so we can
+    // drive its _getPath directly and exercise the path-function branches.
+    function captureInner(cache: Cachetta, opts?: { key?: (...a: unknown[]) => string }) {
+      vi.mocked(cacheFn).mockReturnValueOnce(() => Promise.resolve('noop'));
+      cache.hashed(() => undefined, opts);
+      const call = vi.mocked(cacheFn).mock.calls.at(-1)!;
+      return call[0];
+    }
+
+    it('returns a callable', () => {
+      vi.mocked(cacheFn).mockReturnValueOnce(() => Promise.resolve('x'));
+      const cache = new Cachetta({ path: './cache' });
+      const wrapped = cache.hashed(() => undefined);
+      expect(wrapped).toBeDefined();
+      expect(cacheFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws when path is callable', () => {
+      const cache = new Cachetta({ path: () => 'x' });
+      expect(() => cache.hashed(() => undefined)).toThrow(/path to be a string/);
+    });
+
+    it('default path is {base}/{hash} (bare hash filename)', () => {
+      const inner = captureInner(new Cachetta({ path: './cache' }));
+      const p = inner._getPath('hello');
+      expect(p).toMatch(/^cache\/[a-f0-9]{16}$/);
+    });
+
+    it('key callable replaces the hash portion of the filename', () => {
+      const inner = captureInner(new Cachetta({ path: './cache' }), {
+        key: (x: unknown) => `id-${x}`,
+      });
+      expect(inner._getPath(42)).toBe('cache/id-42');
+    });
+
+    it('throws when key returns a non-string', () => {
+      const inner = captureInner(new Cachetta({ path: './cache' }), {
+        key: () => 123 as unknown as string,
+      });
+      expect(() => inner._getPath('a')).toThrow(/key callable must return a string/);
+    });
+
+    it.each([
+      ['empty string', ''],
+      ['single dot', '.'],
+      ['double dot', '..'],
+      ['contains slash', 'sub/dir'],
+      ['contains backslash', 'back\\slash'],
+      ['contains embedded ..', 'foo..bar'],
+      ['contains null byte', 'null\x00byte'],
+    ])('rejects unsafe key segment: %s', (_label, badKey) => {
+      const inner = captureInner(new Cachetta({ path: './cache' }), {
+        key: () => badKey,
+      });
+      expect(() => inner._getPath('a')).toThrow(/single safe path segment/);
+    });
+  });
+
   describe('invalidate', () => {
     let tempDir: string;
 
