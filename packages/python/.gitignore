@@ -9,3 +9,5 @@ docs
 .ruff_cache
 build
 uv.lock
+coverage.xml
+.coverage

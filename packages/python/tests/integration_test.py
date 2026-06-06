@@ -22,6 +22,11 @@ from cachetta import (
 )
 from cachetta.utils.cache_fn import _in_flight
 
+# Everything in this module is the integration suite. The coverage gate
+# measures the unit suite only (`pytest -m "not integration"`), so these
+# end-to-end tests are deliberately excluded from coverage accounting.
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(autouse=True)
 def clear_in_flight():

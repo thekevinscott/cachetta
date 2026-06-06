@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # diff-cover (patch coverage) needs the base branch history.
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -25,6 +28,40 @@ jobs:
         working-directory: packages/python
         run: uv sync
 
+      # Full suite (unit + integration) for correctness, fail-fast + verbose.
       - name: Run tests
         working-directory: packages/python
         run: uv run pytest -x -v
+
+      # Requirement (2): total unit-suite coverage must not drop below the
+      # current baseline. Integration tests are excluded (-m "not integration")
+      # and the XML report feeds the patch-coverage step below.
+      - name: Unit coverage floor
+        working-directory: packages/python
+        run: uv run pytest -m "not integration" --cov=cachetta --cov-report=xml --cov-fail-under=92
+
+      # Requirement (1): every line added/changed in this PR must be covered
+      # by the unit suite. Integration-only coverage does not count, because
+      # the report above is from the unit run.
+      - name: Patch coverage (changed lines must be 100% unit-covered)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Escape hatch mirroring Skip-Changelog / Skip-Docs: a
+          # `Skip-Coverage: <reason>` trailer on any commit in the PR waives
+          # this patch-coverage check. Use only for genuinely integration-only
+          # code. The coverage floor above is never waived.
+          TRAILERS=$(git log --format='%(trailers:only,unfold)' "$BASE_SHA..$HEAD_SHA")
+          if echo "$TRAILERS" | grep -qiE '^Skip-Coverage:[[:space:]]*\S'; then
+            echo "Skip-Coverage trailer present — skipping patch coverage."
+            exit 0
+          fi
+
+          git fetch --no-tags --force origin \
+            "$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
+          uvx diff-cover packages/python/coverage.xml \
+            --compare-branch="origin/$GITHUB_BASE_REF" --fail-under=100
