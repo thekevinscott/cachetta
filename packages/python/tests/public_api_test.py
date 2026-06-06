@@ -17,17 +17,15 @@ pytestmark = pytest.mark.integration
 
 
 def describe_hash_export():
-    """The public ``hash`` export returns the same digest cachetta
-    embeds into the auto-keyed cache path, so consumers can build
-    custom paths or external indexes that line up with cachetta's own
-    keying without re-implementing the hasher.
+    """The public ``hash`` export returns a stable digest consumers can
+    use to build custom ``path=`` callables or external indexes — the
+    same hasher cachetta used to embed into the auto-keyed sibling path
+    before issue #45 removed that implicit behavior.
     """
 
-    def test_digest_matches_auto_keyed_file_written_to_disk():
+    def test_digest_drives_user_built_keyed_file_path():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "data.json"
-
-            @Cachetta(path=str(cache_path))
+            @Cachetta(path=lambda *a: f"{tmpdir}/data-{hash(*a)}.json")
             def fn(a, b):
                 return {"a": a, "b": b}
 
@@ -40,11 +38,9 @@ def describe_hash_export():
                 % (expected, list(Path(tmpdir).iterdir()))
             )
 
-    def test_digest_matches_when_keyword_args_are_used():
+    def test_digest_drives_user_built_keyed_path_with_kwargs():
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "data.json"
-
-            @Cachetta(path=str(cache_path))
+            @Cachetta(path=lambda *a, **kw: f"{tmpdir}/data-{hash(*a, **kw)}.json")
             def fn(a, *, flag):
                 return (a, flag)
 
@@ -53,11 +49,11 @@ def describe_hash_export():
             digest = hash("a", flag=True)
             assert (Path(tmpdir) / f"data-{digest}.json").exists()
 
-    def test_digest_matches_for_extensionless_path():
+    def test_digest_drives_user_built_subdirectory_layout():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
 
-            @Cachetta(path=str(cache_dir))
+            @Cachetta(path=lambda *a: cache_dir / hash(*a))
             def fn(k):
                 return k
 

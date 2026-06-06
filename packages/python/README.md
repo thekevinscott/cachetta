@@ -60,11 +60,11 @@ result = cached_get_data()
 
 [→ Function Wrapper](./docs/python.md#function-wrapper)
 
-## Auto Cache Keys
+## Per-Argument Cache Files
 
-Decorated functions hash their arguments to generate unique paths automatically.
+Pass a callable `path` to vary the cache file by argument. A `str`/`Path` `path` is used verbatim regardless of arguments.
 
-[→ Auto Cache Keys](./docs/python.md#auto-cache-keys)
+[→ Per-Argument Cache Files](./docs/python.md#per-argument-cache-files)
 
 ## In-Memory LRU
 

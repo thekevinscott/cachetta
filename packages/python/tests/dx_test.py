@@ -291,51 +291,24 @@ def describe_conditional_caching():
             assert not cache_path.exists()
 
 
-def describe_auto_cache_key():
-    def test_auto_key_generates_different_paths():
+def describe_literal_str_path_with_args():
+    """`path=str|Path` is now used verbatim regardless of wrapped-function
+    arguments. Use a callable `path` to vary the cache file by arg."""
+
+    def test_literal_path_ignores_args():
         cache = Cachetta(path="cache/data.json")
-        path1 = cache._get_path("arg1")
-        path2 = cache._get_path("arg2")
-        assert path1 != path2
-        assert path1.parent == path2.parent
+        assert cache._get_path("arg1") == Path("cache/data.json")
+        assert cache._get_path("arg1") == cache._get_path("arg2")
 
-    def test_auto_key_same_args_same_path():
+    def test_literal_path_ignores_kwargs():
         cache = Cachetta(path="cache/data.json")
-        path1 = cache._get_path("arg1", key="val")
-        path2 = cache._get_path("arg1", key="val")
-        assert path1 == path2
+        assert cache._get_path(user="alice") == Path("cache/data.json")
+        assert cache._get_path(user="alice") == cache._get_path(user="bob")
 
-    def test_auto_key_preserves_extension():
-        cache = Cachetta(path="cache/data.json")
-        path = cache._get_path("arg1")
-        assert path.suffix == ".json"
-
-    def test_auto_key_no_args_returns_original():
-        cache = Cachetta(path="cache/data.json")
-        path = cache._get_path()
-        assert path == Path("cache/data.json")
-
-    def test_auto_key_with_kwargs():
-        cache = Cachetta(path="cache/data.json")
-        path1 = cache._get_path(user="alice")
-        path2 = cache._get_path(user="bob")
-        assert path1 != path2
-
-    def test_auto_key_integration():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache = Cachetta(path=f"{tmpdir}/data.json")
-
-            @cache
-            def get_data(name):
-                return {"name": name}
-
-            r1 = get_data("alice")
-            r2 = get_data("bob")
-            r3 = get_data("alice")
-
-            assert r1 == {"name": "alice"}
-            assert r2 == {"name": "bob"}
-            assert r3 == {"name": "alice"}
+    def test_callable_path_still_varies_by_args():
+        cache = Cachetta(path=lambda name: f"cache/{name}.json")
+        assert cache._get_path("alice") == Path("cache/alice.json")
+        assert cache._get_path("alice") != cache._get_path("bob")
 
 
 def describe_stale_while_revalidate():

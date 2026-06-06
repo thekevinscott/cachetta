@@ -208,9 +208,9 @@ describe('comprehensive integration tests', () => {
     });
   });
 
-  describe('auto cache key generation', () => {
-    it('should auto-generate unique paths when wrapping with args', async () => {
-      const cache = new Cachetta({ path: join(tempDir, 'cache.json') });
+  describe('path function generates per-arg cache files', () => {
+    it('produces distinct cache files for distinct args', async () => {
+      const cache = new Cachetta({ path: (x: number) => join(tempDir, `${x}.json`) });
 
       let callCount = 0;
       const fn = (x: number) => {

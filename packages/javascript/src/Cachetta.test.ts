@@ -228,39 +228,24 @@ describe('Cachetta', () => {
     });
   });
 
-  describe('_getPath with auto cache key', () => {
-    it('should return path as-is when no args', () => {
+  describe('_getPath', () => {
+    it('returns string path verbatim with no args', () => {
       const cache = new Cachetta({ path: './data/cache.json' });
       expect(cache._getPath()).toBe('./data/cache.json');
     });
 
-    it('should generate hashed path when args are provided', () => {
+    it('returns string path verbatim regardless of args', () => {
       const cache = new Cachetta({ path: './data/cache.json' });
-      const path1 = cache._getPath('arg1', 'arg2');
-      expect(path1).toMatch(/^data\/cache-[a-f0-9]{16}\.json$/);
+      expect(cache._getPath('arg1', 'arg2')).toBe('./data/cache.json');
+      expect(cache._getPath('a')).toBe(cache._getPath('b'));
     });
 
-    it('should generate different paths for different args', () => {
-      const cache = new Cachetta({ path: './data/cache.json' });
-      const path1 = cache._getPath('arg1');
-      const path2 = cache._getPath('arg2');
-      expect(path1).not.toBe(path2);
-    });
-
-    it('should generate same path for same args', () => {
-      const cache = new Cachetta({ path: './data/cache.json' });
-      const path1 = cache._getPath('arg1', 'arg2');
-      const path2 = cache._getPath('arg1', 'arg2');
-      expect(path1).toBe(path2);
-    });
-
-    it('should handle paths without extension', () => {
+    it('returns extensionless string path verbatim', () => {
       const cache = new Cachetta({ path: './data/cache' });
-      const path = cache._getPath('arg1');
-      expect(path).toMatch(/^data\/cache-[a-f0-9]{16}$/);
+      expect(cache._getPath('arg1')).toBe('./data/cache');
     });
 
-    it('should still use pathFn when path is a function', () => {
+    it('calls pathFn with args when path is a function', () => {
       const pathFn = (a: string, b: string) => `./data/${a}-${b}.json`;
       const cache = new Cachetta({ path: pathFn });
       expect(cache._getPath('foo', 'bar')).toBe('./data/foo-bar.json');

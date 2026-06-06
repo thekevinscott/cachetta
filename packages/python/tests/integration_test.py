@@ -173,26 +173,6 @@ def describe_sync_decorator():
             assert r2 == {"computed": True}
             assert call_count == 1
 
-    def test_decorator_with_args_and_auto_key():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            call_count = 0
-            cache = Cachetta(path=f"{tmpdir}/data.json")
-
-            @cache
-            def compute(x):
-                nonlocal call_count
-                call_count += 1
-                return {"x": x}
-
-            r1 = compute("a")
-            r2 = compute("b")
-            r3 = compute("a")  # should use cache
-
-            assert r1 == {"x": "a"}
-            assert r2 == {"x": "b"}
-            assert r3 == {"x": "a"}
-            assert call_count == 2
-
     def test_decorator_with_path_function():
         with tempfile.TemporaryDirectory() as tmpdir:
             call_count = 0
@@ -882,10 +862,10 @@ def describe_invalidation_integration():
             assert r2 == {"count": 2}
             assert call_count == 2
 
-    def test_invalidate_with_auto_key():
+    def test_invalidate_with_path_function_arg_scoped():
         with tempfile.TemporaryDirectory() as tmpdir:
             call_count = 0
-            cache = Cachetta(path=f"{tmpdir}/data.json")
+            cache = Cachetta(path=lambda x: f"{tmpdir}/{x}.json")
 
             @cache
             def compute(x):
@@ -897,11 +877,11 @@ def describe_invalidation_integration():
             compute("b")
             assert call_count == 2
 
-            # Invalidate only "a"
+            # With a callable path, invalidate("a") only removes the "a" file
             cache.invalidate("a")
 
-            compute("a")  # Should recompute
-            compute("b")  # Should use cache
+            compute("a")  # recomputes
+            compute("b")  # served from cache
             assert call_count == 3
 
 

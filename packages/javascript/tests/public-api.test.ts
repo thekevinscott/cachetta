@@ -22,8 +22,14 @@ describe('public hash() export', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it('digest matches the auto-keyed file written to disk', async () => {
-    const cache = new Cachetta({ path: join(tempDir, 'data.json') });
+  // After issue #45 the decorator no longer rewrites a string `path` into a
+  // `{name}-{hash}{ext}` sibling. The `hash` export remains the way to build
+  // keyed file paths — consumers pass a `path:` callable that calls it.
+
+  it('digest drives a user-built keyed file path', async () => {
+    const cache = new Cachetta({
+      path: (...args: unknown[]) => join(tempDir, `data-${hash(...args)}.json`),
+    });
     const wrapped = cache(async (a: string, b: string) => ({ a, b }));
 
     await wrapped('x', 'y');
@@ -33,8 +39,10 @@ describe('public hash() export', () => {
     await fs.access(expected);
   });
 
-  it('digest matches when the path has no extension', async () => {
-    const cache = new Cachetta({ path: join(tempDir, 'cache') });
+  it('digest drives a user-built bare-hash file name (no extension)', async () => {
+    const cache = new Cachetta({
+      path: (...args: unknown[]) => join(tempDir, `cache-${hash(...args)}`),
+    });
     const wrapped = cache(async (k: string) => k);
 
     await wrapped('k');
