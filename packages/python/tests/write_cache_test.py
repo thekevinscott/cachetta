@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
-from cachetta.cachetta import Cachetta
+from cachetta.cachetta import Cachetta  # mock-enforce-ignore: real Cachetta config object used as a plain-data fixture
 from cachetta.write_cache import (
     write_cache,
     write_cache_ctx,

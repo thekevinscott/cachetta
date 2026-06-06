@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cachetta.cachetta import Cachetta
+from cachetta.cachetta import Cachetta  # mock-enforce-ignore: real Cachetta config object used as a plain-data fixture
 from cachetta.utils.cache_fn import _resolve_args, _should_cache, _in_flight
 
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isCachetta, isCacheConfig, isPartialCacheConfig } from './type-guards.js';
 import type { CacheConfig } from './types.js';
-import { Cachetta } from './Cachetta.js';
+import { Cachetta } from './Cachetta.js'; // mock-enforce-ignore: real Cachetta instance is the value the type guard inspects
 
 describe('type-guards', () => {
   describe('isCachetta', () => {
