@@ -156,6 +156,28 @@ await getUser(1);   // cached at ./cache/users/1.json
 await getUser(2);   // cached at ./cache/users/2.json
 ```
 
+### `.hashed` mode
+
+When you want one file per argument-set *inside* a folder (the common LLM/embedding cache shape), use `cache.hashed(fn)`. The path you pass is treated as a directory, and entries are written as `{path}/{hash}` (bare hash filename):
+
+```javascript
+const cache = new Cachetta({ path: './cache/llm' });
+
+const call = cache.hashed((prompt) => llm(prompt));
+
+await call('hello');   // ./cache/llm/<hash>
+await call('world');   // ./cache/llm/<otherhash>
+```
+
+Override the filename with `key` — the callable receives the same args as the wrapped function and must return a single safe path segment:
+
+```javascript
+const profileCache = cache.hashed(profile, { key: (userId) => `u-${userId}` });
+// -> ./cache/llm/u-42
+```
+
+`condition` works the same as with the plain wrapper.
+
 ### Public `hash` helper
 
 The same digest the auto-keyed path uses is exposed as a top-level `hash` export. Use it when you want to construct cache paths manually (e.g. inside a `path:` callable that keys on a subset of args) and keep them aligned with cachetta's own keying:
