@@ -104,13 +104,12 @@ def describe_cache():
         resolved = new_cache._get_path("alice")
         assert resolved == Path("base/sub/alice.pkl")
 
-    def test_truediv_with_string_treats_extensionless_path_as_subdirectory():
+    def test_truediv_with_string_produces_literal_subfolder_path():
         cache = Cachetta(path="base") / "llm-calls"
-        resolved = cache._get_path("a")
-        assert resolved.parent == Path("base/llm-calls"), (
-            "Expected the hashed entry to live inside the subdirectory, got %s"
-            % resolved
-        )
+        # `/` joins onto the base, producing a literal subfolder path that
+        # is used verbatim regardless of args.
+        assert cache._get_path() == Path("base/llm-calls")
+        assert cache._get_path("a") == Path("base/llm-calls")
 
     def test_truediv_with_callable_rejects_traversal():
         cache = Cachetta(path="base") / (lambda: "../escape.pkl")
@@ -518,14 +517,13 @@ def describe_lru_cache():
         assert set(lru.keys()) == {"b", "c"}
 
 
-def describe_get_path_auto_key():
-    def test_appends_hash_to_stem_for_paths_with_extension():
+def describe_get_path_literal_with_args():
+    def test_returns_literal_path_when_args_provided():
+        # Args to the wrapped function no longer rewrite str/Path paths into
+        # `{stem}-{hash}{ext}` siblings — `path` is used verbatim. See #45.
         cache = Cachetta(path="data/cache.json")
-        resolved = cache._get_path("a", "b")
-        assert resolved.parent == Path("data")
-        assert resolved.suffix == ".json"
-        assert resolved.stem.startswith("cache-")
-        assert len(resolved.stem) == len("cache-") + 16
+        assert cache._get_path("a", "b") == Path("data/cache.json")
+        assert cache._get_path("a", "b") == cache._get_path("x", y=1)
 
 
 def describe_wrap():

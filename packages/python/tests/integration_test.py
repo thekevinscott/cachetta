@@ -308,29 +308,13 @@ def describe_copy_and_composition():
         assert sub.write == cache.write
         assert sub.read == cache.read
 
-    def test_slash_string_descends_into_subdirectory_for_auto_hashed_entries():
-        """`cache / 'sub'` should produce entries inside base/sub/, not as
-        base/sub-{hash} siblings, when the cache is used with auto-hashing args.
-        """
+    def test_slash_string_produces_literal_subfolder_path():
+        """`cache / 'sub'` joins onto the base path, producing a literal
+        subfolder path used verbatim regardless of args."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(path=tmpdir) / "llm-calls"
-
-            @cache
-            def compute(x):
-                return {"x": x}
-
-            compute("a")
-
-            sub_dir = Path(tmpdir) / "llm-calls"
-            assert sub_dir.is_dir(), (
-                "Expected '%s' to be a directory containing the cached entry, "
-                "not a sibling file." % sub_dir
-            )
-            entries = list(sub_dir.iterdir())
-            assert len(entries) == 1, (
-                "Expected exactly one cache file inside the subdirectory, "
-                "got: %s" % entries
-            )
+            assert cache._get_path() == Path(tmpdir) / "llm-calls"
+            assert cache._get_path("a") == Path(tmpdir) / "llm-calls"
 
     def test_slash_callable_resolves_at_call_time():
         """`cache / fn` should defer path resolution to call time, joining
