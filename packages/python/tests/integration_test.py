@@ -323,6 +323,104 @@ def describe_copy_and_composition():
         assert sub.write == cache.write
         assert sub.read == cache.read
 
+    def test_slash_string_descends_into_subdirectory_for_auto_hashed_entries():
+        """`cache / 'sub'` should produce entries inside base/sub/, not as
+        base/sub-{hash} siblings, when the cache is used with auto-hashing args.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=tmpdir) / "llm-calls"
+
+            @cache
+            def compute(x):
+                return {"x": x}
+
+            compute("a")
+
+            sub_dir = Path(tmpdir) / "llm-calls"
+            assert sub_dir.is_dir(), (
+                "Expected '%s' to be a directory containing the cached entry, "
+                "not a sibling file." % sub_dir
+            )
+            entries = list(sub_dir.iterdir())
+            assert len(entries) == 1, (
+                "Expected exactly one cache file inside the subdirectory, "
+                "got: %s" % entries
+            )
+
+    def test_slash_callable_resolves_at_call_time():
+        """`cache / fn` should defer path resolution to call time, joining
+        the callable's return onto the cache's base folder.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=tmpdir) / (lambda url: f"{url.split(':')[0]}/{url.split(':')[1]}.pkl")
+
+            resolved = cache._get_path("pdf:2401.12345v1")
+            assert resolved == Path(tmpdir) / "pdf" / "2401.12345v1.pkl"
+
+    def test_slash_callable_decorator_writes_to_resolved_path():
+        """End-to-end: decorating with `cache / fn` writes to the callable-derived path
+        and reads back from the same location on a subsequent call.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            call_count = 0
+            cache = Cachetta(path=tmpdir) / (lambda kind, ident: f"{kind}/{ident}.pkl")
+
+            @cache
+            def download(kind, ident):
+                nonlocal call_count
+                call_count += 1
+                return {"kind": kind, "ident": ident, "n": call_count}
+
+            r1 = download("pdf", "2401.12345v1")
+            assert r1 == {"kind": "pdf", "ident": "2401.12345v1", "n": 1}
+            expected_file = Path(tmpdir) / "pdf" / "2401.12345v1.pkl"
+            assert expected_file.exists(), (
+                "Expected cache file at %s" % expected_file
+            )
+
+            r2 = download("pdf", "2401.12345v1")
+            assert r2 == r1
+            assert call_count == 1
+
+            r3 = download("html", "abc")
+            assert r3 == {"kind": "html", "ident": "abc", "n": 2}
+            assert (Path(tmpdir) / "html" / "abc.pkl").exists()
+
+    def test_slash_callable_rejects_path_traversal():
+        """Callable returning a `..`-traversing path should raise InvalidPathError."""
+        cache = Cachetta(path="base") / (lambda: "../escape/file.pkl")
+        with pytest.raises(InvalidPathError, match="Path traversal"):
+            cache._get_path()
+
+    def test_slash_callable_composition_with_hash_helper():
+        """A callable returned from `/` can use a hash-style helper to key on a
+        subset of args, the common 'kind-routing + hashed-id' pattern.
+        """
+        import hashlib
+        import json as _json
+
+        def _hash(*args, **kwargs):
+            return hashlib.sha256(
+                _json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True, default=str).encode()
+            ).hexdigest()[:16]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=tmpdir) / (lambda kind, payload: f"{kind}/{_hash(payload)}.pkl")
+
+            @cache
+            def fetch(kind, payload):
+                return {"kind": kind, "payload": payload}
+
+            fetch("llm", {"prompt": "hello"})
+            fetch("llm", {"prompt": "world"})
+            fetch("embed", {"prompt": "hello"})
+
+            llm_dir = Path(tmpdir) / "llm"
+            embed_dir = Path(tmpdir) / "embed"
+            assert llm_dir.is_dir() and embed_dir.is_dir()
+            assert len(list(llm_dir.iterdir())) == 2
+            assert len(list(embed_dir.iterdir())) == 1
+
     def test_copy_overrides():
         original = Cachetta(
             path="original.json",
