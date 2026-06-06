@@ -25,17 +25,21 @@ def _should_cache(cache, result) -> bool:
 
 
 def cache_fn(cache, fn: Callable) -> Callable:
+    # `Callable` doesn't statically expose `__name__`; resolve it once (with a
+    # safe fallback for callables that lack it) for the log messages below,
+    # which reach it through closure from the nested wrappers.
+    fn_name = getattr(fn, "__name__", repr(fn))
     if asyncio.iscoroutinefunction(fn):
-        logger.debug("Decorating async function %s", fn.__name__)
+        logger.debug("Decorating async function %s", fn_name)
 
         @wraps(fn)
         async def async_wrapper(*args, **kwargs):
-            logger.debug("Executing async function %s with read_cache", fn.__name__)
+            logger.debug("Executing async function %s with read_cache", fn_name)
             cache_args, cache_kwargs = _resolve_args(cache, args, kwargs)
 
             async with async_read_cache(cache, *cache_args, **cache_kwargs) as data:
                 if data is not None:
-                    logger.debug("Data is not None, returning data for %s", fn.__name__)
+                    logger.debug("Data is not None, returning data for %s", fn_name)
                     return data
 
                 cache_key = str(cache._get_path(*cache_args, **cache_kwargs))
@@ -67,13 +71,13 @@ def cache_fn(cache, fn: Callable) -> Callable:
                 async def _execute():
                     try:
                         result = await fn(*args, **kwargs)
-                        logger.debug("Executed async function %s, writing data to %s", fn.__name__, cache.path)
+                        logger.debug("Executed async function %s, writing data to %s", fn_name, cache.path)
                         if _should_cache(cache, result):
                             await async_write_cache(cache, result, *cache_args, **cache_kwargs)
-                            logger.debug("Wrote data for %s to %s", fn.__name__, cache.path)
+                            logger.debug("Wrote data for %s to %s", fn_name, cache.path)
                         return result
                     except Exception as e:
-                        logger.error("Error executing async function %s: %s", fn.__name__, e)
+                        logger.error("Error executing async function %s: %s", fn_name, e)
                         raise
 
                 task = asyncio.ensure_future(_execute())
@@ -85,11 +89,11 @@ def cache_fn(cache, fn: Callable) -> Callable:
 
         return async_wrapper
     else:
-        logger.debug("Decorating sync function %s", fn.__name__)
+        logger.debug("Decorating sync function %s", fn_name)
 
         @wraps(fn)
         def sync_wrapper(*args, **kwargs):
-            logger.debug("Executing sync function %s with read_cache", fn.__name__)
+            logger.debug("Executing sync function %s with read_cache", fn_name)
             cache_args, cache_kwargs = _resolve_args(cache, args, kwargs)
 
             with read_cache(cache, *cache_args, **cache_kwargs) as data:
@@ -99,21 +103,21 @@ def cache_fn(cache, fn: Callable) -> Callable:
                     if cache.stale_duration:
                         stale_data = read_stale_cache(cache, *cache_args, **cache_kwargs)
                         if stale_data is not None:
-                            logger.debug("Returning stale cache for %s", fn.__name__)
+                            logger.debug("Returning stale cache for %s", fn_name)
                             return stale_data
 
-                    logger.debug("Data is None, executing sync function %s", fn.__name__)
+                    logger.debug("Data is None, executing sync function %s", fn_name)
                     try:
                         data = fn(*args, **kwargs)
-                        logger.debug("Executed sync function %s, writing data to %s", fn.__name__, cache.path)
+                        logger.debug("Executed sync function %s, writing data to %s", fn_name, cache.path)
                         if _should_cache(cache, data):
                             write_cache(cache, data, *cache_args, **cache_kwargs)
-                            logger.debug("Wrote data for %s to %s", fn.__name__, cache.path)
+                            logger.debug("Wrote data for %s to %s", fn_name, cache.path)
                     except Exception as e:
-                        logger.error("Error executing sync function %s: %s", fn.__name__, e)
+                        logger.error("Error executing sync function %s: %s", fn_name, e)
                         raise
                 else:
-                    logger.debug("Data is not None, returning data for %s", fn.__name__)
+                    logger.debug("Data is not None, returning data for %s", fn_name)
                 return data
 
         return sync_wrapper

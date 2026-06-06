@@ -7,6 +7,7 @@ import tempfile
 from cachetta.cachetta import Cachetta
 from cachetta.exceptions import CachettaError, InvalidPathError
 from datetime import timedelta
+from typing import Any
 
 
 @pytest.fixture(autouse=True)
@@ -227,7 +228,9 @@ def describe_cache():
                 (mock_write_cache, 0),
             ]
 
-            for case in [
+            # Typed as dict[str, Any] so the heterogeneous case values unpack
+            # cleanly; the dynamic dispatch below is intentional.
+            cases: list[dict[str, Any]] = [
                 {
                     "count": 1,
                     "args": (),
@@ -290,7 +293,8 @@ def describe_cache():
                     "kwargs": {"foo": "foo"},
                     "call_counts": cache_hit,
                 },
-            ]:
+            ]
+            for case in cases:
                 case_count, args, kwargs, after, call_counts = (
                     case["count"],
                     case["args"],

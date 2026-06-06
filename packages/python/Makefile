@@ -7,6 +7,9 @@ test_watch:
 lint:
 	uvx ruff check $(filter-out $@,$(MAKECMDGOALS))
 
+typecheck:
+	uv run ty check
+
 publish:
 	make lint && rm -rf dist && make run_build && make run_upload
 

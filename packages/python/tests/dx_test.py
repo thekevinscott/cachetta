@@ -486,4 +486,7 @@ def describe_wrap_method():
             return {"data": True}
 
         wrapped = cache.wrap(my_fn)
-        assert wrapped.__name__ == "my_fn"
+        # `wrap` is typed as returning `Callable`, which doesn't statically
+        # expose `__name__`; this asserts the runtime attribute that
+        # functools.wraps copies over.
+        assert wrapped.__name__ == "my_fn"  # ty: ignore[unresolved-attribute]
