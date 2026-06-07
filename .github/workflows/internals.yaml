@@ -1,0 +1,23 @@
+name: Internals
+
+# Repo-integrity guards (see internals/). Intentionally unfiltered: these are
+# cheap and must run on every PR so the unit/integration boundary can't quietly
+# regress.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  boundary-guard:
+    name: Boundary guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Unit/integration boundary guard
+        run: python internals/check_boundary.py
