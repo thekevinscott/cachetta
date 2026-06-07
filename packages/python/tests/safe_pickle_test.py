@@ -10,10 +10,10 @@ from uuid import UUID
 
 import pytest
 
-from cachetta import Cachetta, UnsafePickleError
-from cachetta.read_cache import read_cache
+from cachetta import Cachetta, UnsafePickleError  # mock-enforce-ignore: real Cachetta/UnsafePickleError exercised in the safe-pickle round-trip
+from cachetta.read_cache import read_cache  # mock-enforce-ignore: real read_cache round-trips through safe_pickle end-to-end
 from cachetta.safe_pickle import safe_load
-from cachetta.write_cache import write_cache
+from cachetta.write_cache import write_cache  # mock-enforce-ignore: real write_cache round-trips through safe_pickle end-to-end
 
 
 class _ArbitraryClass:

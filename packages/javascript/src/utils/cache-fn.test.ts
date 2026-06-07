@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { cacheFn, cacheFnSync } from './cache-fn.js';
-import { Cachetta } from '../Cachetta.js';
+import { Cachetta } from '../Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta config object used as a plain-data fixture
 import { readCache, readStaleCache } from '../read-cache.js';
 import { writeCache } from '../write-cache.js';
 import type * as _readCacheTypes from '../read-cache.js';

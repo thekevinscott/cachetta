@@ -13,6 +13,8 @@ from cachetta.read_cache import read_cache
 from cachetta.write_cache import write_cache, _created_dirs
 from cachetta.utils.cache_fn import _in_flight
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(autouse=True)
 def clear_created_dirs():

@@ -6,7 +6,9 @@ from unittest.mock import patch, Mock, MagicMock
 import tempfile
 from cachetta.cachetta import Cachetta
 from cachetta.exceptions import CachettaError, InvalidPathError
+from cachetta._sentinel import _LRU_MISS
 from datetime import timedelta
+from time import time
 from typing import Any
 
 
@@ -485,3 +487,194 @@ def describe_cache():
 
         with pytest.raises(TypeError):
             decorator()
+
+
+def describe_lru_cache():
+    def test_get_returns_miss_when_key_absent():
+        cache = Cachetta(path="x", lru_size=2)
+        assert cache._lru_get("absent") is _LRU_MISS
+
+    def test_get_returns_fresh_value():
+        cache = Cachetta(path="x", lru_size=2, duration=timedelta(days=1))
+        cache._lru_set("k", "v")
+        assert cache._lru_get("k") == "v"
+
+    def test_get_evicts_and_misses_when_entry_expired():
+        cache = Cachetta(path="x", lru_size=2, duration=timedelta(seconds=1))
+        lru = cache._lru
+        assert lru is not None
+        lru["k"] = ("v", time() - 10)  # backdate beyond the 1s duration
+        assert cache._lru_get("k") is _LRU_MISS
+        assert "k" not in lru
+
+    def test_set_evicts_oldest_at_capacity():
+        cache = Cachetta(path="x", lru_size=2, duration=timedelta(days=1))
+        cache._lru_set("a", "1")
+        cache._lru_set("b", "2")
+        cache._lru_set("c", "3")  # exceeds capacity -> evict oldest ("a")
+        lru = cache._lru
+        assert lru is not None
+        assert "a" not in lru
+        assert set(lru.keys()) == {"b", "c"}
+
+
+def describe_get_path_auto_key():
+    def test_appends_hash_to_stem_for_paths_with_extension():
+        cache = Cachetta(path="data/cache.json")
+        resolved = cache._get_path("a", "b")
+        assert resolved.parent == Path("data")
+        assert resolved.suffix == ".json"
+        assert resolved.stem.startswith("cache-")
+        assert len(resolved.stem) == len("cache-") + 16
+
+
+def describe_wrap():
+    def test_wrap_returns_cached_callable():
+        cache = Cachetta(path="x")
+
+        def fn():
+            return "v"
+
+        wrapped = cache.wrap(fn)
+        assert callable(wrapped)
+        assert wrapped() == "v"
+
+
+def describe_invalidate():
+    def test_deletes_file_and_clears_lru_entry():
+        cache = Cachetta(path="x.json", lru_size=2, duration=timedelta(days=1))
+        key = str(cache._get_path())
+        cache._lru_set(key, "v")
+        with patch("cachetta.cachetta.os.unlink") as unlink:
+            cache.invalidate()
+        unlink.assert_called_once()
+        lru = cache._lru
+        assert lru is not None
+        assert key not in lru
+
+    def test_swallows_missing_file_and_skips_lru_when_disabled():
+        cache = Cachetta(path="x.json")  # no LRU
+        with patch("cachetta.cachetta.os.unlink", side_effect=FileNotFoundError):
+            cache.invalidate()  # must not raise
+
+
+def describe_sync_instance_methods():
+    def test_exists_true_when_file_present():
+        with patch("cachetta.cachetta.get_last_updated", return_value=123.0):
+            assert Cachetta(path="x").exists() is True
+
+    def test_exists_false_when_absent():
+        with patch("cachetta.cachetta.get_last_updated", return_value=None):
+            assert Cachetta(path="x").exists() is False
+
+    def test_age_returns_timedelta_when_present():
+        with patch("cachetta.cachetta.get_last_updated", return_value=time() - 5):
+            age = Cachetta(path="x").age()
+            assert isinstance(age, timedelta)
+            assert age.total_seconds() >= 4
+
+    def test_age_none_when_absent():
+        with patch("cachetta.cachetta.get_last_updated", return_value=None):
+            assert Cachetta(path="x").age() is None
+
+    def test_info_reports_missing_file():
+        with patch("cachetta.cachetta.get_last_updated", return_value=None):
+            info = Cachetta(path="x").info()
+            assert info == {
+                "exists": False,
+                "age": None,
+                "expired": False,
+                "stale": False,
+                "path": "x",
+            }
+
+    def test_info_reports_fresh_cache():
+        with patch("cachetta.cachetta.get_last_updated", return_value=time()):
+            info = Cachetta(path="x", duration=timedelta(days=1)).info()
+            assert info["exists"] is True
+            assert info["expired"] is False
+            assert info["stale"] is False
+
+    def test_info_reports_expired_and_stale():
+        with patch("cachetta.cachetta.get_last_updated", return_value=time() - 5):
+            info = Cachetta(
+                path="x",
+                duration=timedelta(seconds=1),
+                stale_duration=timedelta(days=1),
+            ).info()
+            assert info["expired"] is True
+            assert info["stale"] is True
+
+    def test_info_expired_but_not_stale_without_stale_duration():
+        with patch("cachetta.cachetta.get_last_updated", return_value=time() - 5):
+            info = Cachetta(path="x", duration=timedelta(seconds=1)).info()
+            assert info["expired"] is True
+            assert info["stale"] is False
+
+    def test_info_expired_but_past_stale_window():
+        with patch("cachetta.cachetta.get_last_updated", return_value=time() - 100):
+            info = Cachetta(
+                path="x",
+                duration=timedelta(seconds=1),
+                stale_duration=timedelta(seconds=5),
+            ).info()
+            assert info["expired"] is True
+            assert info["stale"] is False
+
+
+def describe_async_instance_methods():
+    async def test_ainvalidate_deletes_file_and_clears_lru_entry():
+        cache = Cachetta(path="x.json", lru_size=2, duration=timedelta(days=1))
+        key = str(cache._get_path())
+        cache._lru_set(key, "v")
+        with patch("cachetta.cachetta.os.unlink") as unlink:
+            await cache.ainvalidate()
+        unlink.assert_called_once()
+        lru = cache._lru
+        assert lru is not None
+        assert key not in lru
+
+    async def test_ainvalidate_swallows_missing_file_without_lru():
+        cache = Cachetta(path="x.json")
+        with patch("cachetta.cachetta.os.unlink", side_effect=FileNotFoundError):
+            await cache.ainvalidate()
+
+    async def test_aexists_true_and_false():
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=1.0):
+            assert await Cachetta(path="x").aexists() is True
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=None):
+            assert await Cachetta(path="x").aexists() is False
+
+    async def test_aage_present_and_absent():
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=time() - 5):
+            age = await Cachetta(path="x").aage()
+            assert isinstance(age, timedelta)
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=None):
+            assert await Cachetta(path="x").aage() is None
+
+    async def test_ainfo_reports_missing_file():
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=None):
+            info = await Cachetta(path="x").ainfo()
+            assert info["exists"] is False
+            assert info["age"] is None
+
+    async def test_ainfo_reports_fresh_expired_and_stale_states():
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=time()):
+            fresh = await Cachetta(path="x", duration=timedelta(days=1)).ainfo()
+            assert fresh["expired"] is False
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=time() - 5):
+            stale = await Cachetta(
+                path="x",
+                duration=timedelta(seconds=1),
+                stale_duration=timedelta(days=1),
+            ).ainfo()
+            assert stale["expired"] is True
+            assert stale["stale"] is True
+        with patch("cachetta.cachetta.async_get_last_updated", return_value=time() - 100):
+            past = await Cachetta(
+                path="x",
+                duration=timedelta(seconds=1),
+                stale_duration=timedelta(seconds=5),
+            ).ainfo()
+            assert past["expired"] is True
+            assert past["stale"] is False

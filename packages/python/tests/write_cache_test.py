@@ -3,12 +3,14 @@ import pytest
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
-from cachetta.cachetta import Cachetta
+from cachetta.cachetta import Cachetta  # mock-enforce-ignore: real Cachetta config object used as a plain-data fixture
 from cachetta.write_cache import (
     write_cache,
     write_cache_ctx,
     async_write_cache,
     async_write_cache_ctx,
+    _created_dirs,
+    _CREATED_DIRS_MAX,
 )
 
 
@@ -248,3 +250,39 @@ def describe_async_write_cache_ctx():
                 pass
 
             assert not cache_path.exists()
+
+
+def describe_created_dirs_cache():
+    def test_repeated_write_to_same_dir_moves_it_to_most_recent():
+        """Writing into a directory already in the cache marks it most-recently
+        used instead of re-creating it (the move_to_end branch)."""
+        _created_dirs.clear()
+        with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+            c1 = MockCache(path=str(Path(d1) / "x.dat"))
+            c1.write = True
+            c2 = MockCache(path=str(Path(d2) / "y.dat"))
+            c2.write = True
+
+            write_cache(c1, {"v": 1})  # d1 added
+            write_cache(c2, {"v": 2})  # d2 added -> order [d1, d2]
+            write_cache(c1, {"v": 3})  # d1 already cached -> moved to end
+
+            assert list(_created_dirs)[-1] == str(Path(d1).resolve())
+        _created_dirs.clear()
+
+    def test_evicts_oldest_when_exceeding_max():
+        """When the directory cache exceeds its cap, the least-recently used
+        entry is evicted (the popitem branch)."""
+        _created_dirs.clear()
+        for i in range(_CREATED_DIRS_MAX):
+            _created_dirs[f"/fake/dir/{i}"] = None
+        assert len(_created_dirs) == _CREATED_DIRS_MAX
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = MockCache(path=str(Path(tmpdir) / "new.dat"))
+            cache.write = True
+            write_cache(cache, {"v": 1})  # new dir -> exceeds cap -> evicts oldest
+
+        assert len(_created_dirs) == _CREATED_DIRS_MAX
+        assert "/fake/dir/0" not in _created_dirs
+        _created_dirs.clear()

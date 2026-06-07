@@ -1,7 +1,7 @@
 from datetime import timedelta
 from unittest.mock import patch, Mock
 import pytest
-from cachetta.cachetta import Cachetta
+from cachetta.cachetta import Cachetta  # mock-enforce-ignore: real Cachetta config object drives should_use_read_cache
 from cachetta.utils.should_use_read_cache import should_use_read_cache
 
 
