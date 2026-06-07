@@ -60,11 +60,11 @@ cache.invalidateSync();
 
 [→ Sync API](./docs/javascript.md#sync-api)
 
-## Auto Cache Keys
+## Per-Argument Cache Files
 
-Wrapped functions hash their arguments to generate unique paths automatically.
+Pass a function `path` to vary the cache file by argument. A string `path` is used verbatim regardless of arguments.
 
-[→ Auto Cache Keys](./docs/javascript.md#auto-cache-keys)
+[→ Per-Argument Cache Files](./docs/javascript.md#per-argument-cache-files)
 
 ## In-Memory LRU
 

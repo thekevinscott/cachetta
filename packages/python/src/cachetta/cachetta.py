@@ -9,7 +9,6 @@ from typing import Any, Callable, Optional
 from pathlib import Path
 from .exceptions import CachettaError, InvalidPathError
 from ._sentinel import _LRU_MISS
-from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
 from .utils.get_last_updated import async_get_last_updated
 
@@ -20,7 +19,7 @@ _SENTINEL = object()
 @dataclass
 class Cachetta:
     """A file-based cache with optional in-memory LRU, conditional caching,
-    stale-while-revalidate support, and auto cache key generation.
+    and stale-while-revalidate support.
 
     Args:
         path: Cache file path (str/Path) or callable returning a path.
@@ -84,38 +83,21 @@ class Cachetta:
     def _get_path(self, *args, **kwargs) -> Path:
         """Resolve the cache path.
 
-        When path is a string/Path and arguments are provided, auto-generates
-        a unique cache path by hashing the arguments (similar to functools.lru_cache).
+        When path is a callable, it is invoked with the same args/kwargs as
+        the wrapped function. When path is a str/Path, it is used verbatim —
+        arguments do not affect the resolved path. Use a callable path to
+        vary cache files by argument.
         """
         path = self.path
-        # A callable path is resolved dynamically at call time; str/Path values
-        # fall through to the auto-hashing logic below. The `not isinstance`
-        # check narrows the `str | Path | Callable[...]` union to the callable
-        # arm here, and to `str | Path` after the block.
+        # A callable path is resolved dynamically at call time with the
+        # wrapped function's args; str/Path values are used verbatim,
+        # regardless of args. The `not isinstance` check narrows the
+        # `str | Path | Callable[...]` union to the callable arm here, and to
+        # `str | Path` after the block.
         if not isinstance(path, (str, Path)):
             resolved = Path(path(*args, **kwargs))
-            if ".." in resolved.parts:
-                raise InvalidPathError(
-                    "Path traversal detected: %s" % resolved
-                )
-            return resolved
-
-        resolved = Path(path)
-
-        # Auto cache key: hash arguments and embed in the path.
-        # Paths with an extension are treated as file templates: the hash is
-        # appended to the stem (foo.json -> foo-{hash}.json). Paths without
-        # an extension are treated as directories: the hash becomes a child
-        # filename (foo -> foo/{hash}), so `cache / 'sub'` produces real
-        # subfolder semantics for hashed entries.
-        if args or kwargs:
-            hash_hex = _hash(*args, **kwargs)
-            if resolved.suffix:
-                stem = resolved.stem
-                ext = resolved.suffix
-                resolved = resolved.with_name("%s-%s%s" % (stem, hash_hex, ext))
-            else:
-                resolved = resolved / hash_hex
+        else:
+            resolved = Path(path)
 
         if ".." in resolved.parts:
             raise InvalidPathError(
@@ -129,9 +111,8 @@ class Cachetta:
 
         Two modes:
 
-        - ``cache / 'sub'`` returns a cache rooted at ``base/sub/``. When
-          combined with auto-hashing (decorating a function that takes
-          args), entries are written *inside* the subdirectory.
+        - ``cache / 'sub'`` returns a cache whose path is the literal
+          ``base/sub`` join, used verbatim regardless of args.
         - ``cache / fn`` accepts a callable that returns a filename or
           subpath. The callable is invoked at call time with the wrapped
           function's args and joined onto the cache's base folder. Returned

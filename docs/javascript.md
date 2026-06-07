@@ -143,17 +143,17 @@ const cachedFn = cache.wrapSync(() => computeExpensiveValue());
 const result = cachedFn();
 ```
 
-## Auto Cache Keys
+## Per-Argument Cache Files
 
-When a wrapped function receives arguments, Cachetta automatically generates unique cache paths by hashing the arguments:
+A string `path` is used verbatim — every call writes to the same file regardless of arguments. To key cache files by argument, pass `path` as a function that receives the wrapped function's arguments:
 
 ```javascript
-const cache = new Cachetta({ path: './cache/users.json' });
+const cache = new Cachetta({ path: (userId) => `./cache/users/${userId}.json` });
 
 const getUser = cache((userId) => fetchUser(userId));
 
-await getUser(1);   // cached at ./cache/users-<hash1>.json
-await getUser(2);   // cached at ./cache/users-<hash2>.json
+await getUser(1);   // cached at ./cache/users/1.json
+await getUser(2);   // cached at ./cache/users/2.json
 ```
 
 ### Public `hash` helper

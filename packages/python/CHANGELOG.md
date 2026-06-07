@@ -32,10 +32,16 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ### Fixed
 - `cache / 'sub'` (string right-hand operand) now produces real
-  subfolder semantics: when the resulting cache is used to auto-hash
-  arguments, entries are written *inside* `base/sub/` rather than as
-  hyphenated `base/sub-{hash}` siblings. More generally, hashed entries
-  for any extension-less path now live inside the directory.
+  subfolder semantics: the resulting cache's path is `base/sub` rather
+  than a hyphenated `base/sub-...` sibling.
+
+### Removed
+- **Breaking:** Stopped rewriting `str` / `Path` `path` into a
+  `{stem}-{hash}{ext}` sibling when the wrapped function is called with
+  arguments. `path` is now used verbatim — arguments to the wrapped
+  function no longer affect the cache file. To key cache files by
+  arguments, pass `path` as a callable (e.g.
+  `path=lambda x: f"cache/{x}.json"`). See `MIGRATIONS.md` for details.
 
 ## [0.6.2] - 2026-04-27
 

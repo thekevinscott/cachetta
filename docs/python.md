@@ -130,17 +130,17 @@ cached_get_data = cache(get_data, duration=timedelta(hours=2))
 result = cached_get_data(123)
 ```
 
-## Auto Cache Keys
+## Per-Argument Cache Files
 
-When a decorated function receives arguments, Cachetta automatically generates unique cache paths by hashing the arguments:
+A `str` or `Path` `path` is used verbatim — every call writes to the same file regardless of arguments. To key cache files by argument, pass `path` as a callable that receives the wrapped function's arguments:
 
 ```python
-@Cachetta(path='./cache/users.json')
+@Cachetta(path=lambda user_id: f'./cache/users/{user_id}.json')
 def get_user(user_id: int):
     return fetch_user(user_id)
 
-get_user(1)   # cached at ./cache/users-<hash1>.json
-get_user(2)   # cached at ./cache/users-<hash2>.json
+get_user(1)   # cached at ./cache/users/1.json
+get_user(2)   # cached at ./cache/users/2.json
 ```
 
 ### Public `hash` helper

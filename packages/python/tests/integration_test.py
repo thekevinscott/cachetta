@@ -173,26 +173,6 @@ def describe_sync_decorator():
             assert r2 == {"computed": True}
             assert call_count == 1
 
-    def test_decorator_with_args_and_auto_key():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            call_count = 0
-            cache = Cachetta(path=f"{tmpdir}/data.json")
-
-            @cache
-            def compute(x):
-                nonlocal call_count
-                call_count += 1
-                return {"x": x}
-
-            r1 = compute("a")
-            r2 = compute("b")
-            r3 = compute("a")  # should use cache
-
-            assert r1 == {"x": "a"}
-            assert r2 == {"x": "b"}
-            assert r3 == {"x": "a"}
-            assert call_count == 2
-
     def test_decorator_with_path_function():
         with tempfile.TemporaryDirectory() as tmpdir:
             call_count = 0
@@ -328,29 +308,13 @@ def describe_copy_and_composition():
         assert sub.write == cache.write
         assert sub.read == cache.read
 
-    def test_slash_string_descends_into_subdirectory_for_auto_hashed_entries():
-        """`cache / 'sub'` should produce entries inside base/sub/, not as
-        base/sub-{hash} siblings, when the cache is used with auto-hashing args.
-        """
+    def test_slash_string_produces_literal_subfolder_path():
+        """`cache / 'sub'` joins onto the base path, producing a literal
+        subfolder path used verbatim regardless of args."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(path=tmpdir) / "llm-calls"
-
-            @cache
-            def compute(x):
-                return {"x": x}
-
-            compute("a")
-
-            sub_dir = Path(tmpdir) / "llm-calls"
-            assert sub_dir.is_dir(), (
-                "Expected '%s' to be a directory containing the cached entry, "
-                "not a sibling file." % sub_dir
-            )
-            entries = list(sub_dir.iterdir())
-            assert len(entries) == 1, (
-                "Expected exactly one cache file inside the subdirectory, "
-                "got: %s" % entries
-            )
+            assert cache._get_path() == Path(tmpdir) / "llm-calls"
+            assert cache._get_path("a") == Path(tmpdir) / "llm-calls"
 
     def test_slash_callable_resolves_at_call_time():
         """`cache / fn` should defer path resolution to call time, joining
@@ -882,10 +846,10 @@ def describe_invalidation_integration():
             assert r2 == {"count": 2}
             assert call_count == 2
 
-    def test_invalidate_with_auto_key():
+    def test_invalidate_with_path_function_arg_scoped():
         with tempfile.TemporaryDirectory() as tmpdir:
             call_count = 0
-            cache = Cachetta(path=f"{tmpdir}/data.json")
+            cache = Cachetta(path=lambda x: f"{tmpdir}/{x}.json")
 
             @cache
             def compute(x):
@@ -897,11 +861,11 @@ def describe_invalidation_integration():
             compute("b")
             assert call_count == 2
 
-            # Invalidate only "a"
+            # With a callable path, invalidate("a") only removes the "a" file
             cache.invalidate("a")
 
-            compute("a")  # Should recompute
-            compute("b")  # Should use cache
+            compute("a")  # recomputes
+            compute("b")  # served from cache
             assert call_count == 3
 
 
@@ -1123,3 +1087,77 @@ def describe_zero_negative_duration():
             with read_cache(cache) as result:
                 pass
             assert result is None
+
+
+# -- Literal string/Path with args (post-sibling-removal semantics, issue #45) --
+
+
+def describe_literal_path_with_args():
+    """A str/Path passed as `path` is now treated literally: arguments to the
+    wrapped function do not rewrite the filename into a `{stem}-{hash}{ext}`
+    sibling. Consumers who want arg-keyed caching should use a callable `path`
+    (or `.hashed` once it ships)."""
+
+    def test_get_path_with_args_returns_literal_string_path():
+        cache = Cachetta(path="cache/data.json")
+        assert cache._get_path("arg1") == Path("cache/data.json")
+        assert cache._get_path("arg1", "arg2") == Path("cache/data.json")
+        assert cache._get_path(user="alice") == Path("cache/data.json")
+        # Same path regardless of args
+        assert cache._get_path("a") == cache._get_path("b")
+
+    def test_get_path_with_args_returns_literal_path_object():
+        cache = Cachetta(path=Path("cache/data.json"))
+        assert cache._get_path("arg1") == Path("cache/data.json")
+        assert cache._get_path("a") == cache._get_path("b")
+
+    def test_get_path_with_args_no_extension():
+        cache = Cachetta(path="cache/data")
+        assert cache._get_path("arg1") == Path("cache/data")
+        assert cache._get_path("a") == cache._get_path("b")
+
+    def test_decorator_writes_literal_path_and_serves_first_value():
+        """With `path=str` and args, only the literal file is written; subsequent
+        calls (with any args) read that one file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "data.json"
+            cache = Cachetta(path=str(cache_path))
+
+            call_count = 0
+
+            @cache
+            def compute(x):
+                nonlocal call_count
+                call_count += 1
+                return {"x": x}
+
+            r1 = compute("a")
+            r2 = compute("b")
+            r3 = compute("a")
+
+            # Only the literal cache file exists — no `data-<hash>.json` siblings
+            siblings = sorted(p.name for p in Path(tmpdir).iterdir())
+            assert siblings == ["data.json"]
+
+            # All three calls return the value the first call wrote, the
+            # function body runs only once.
+            assert r1 == {"x": "a"}
+            assert r2 == {"x": "a"}
+            assert r3 == {"x": "a"}
+            assert call_count == 1
+
+    def test_invalidate_with_args_removes_literal_file():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "data.json"
+            cache = Cachetta(path=str(cache_path))
+
+            @cache
+            def compute(x):
+                return {"x": x}
+
+            compute("a")
+            assert cache_path.exists()
+
+            # Args to invalidate should also resolve to the literal path
+            cache.invalidate("anything")
+            assert not cache_path.exists()
