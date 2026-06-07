@@ -1,0 +1,5 @@
+# flake8 here exists only to host the in-repo flake8-mock-isolation plugin
+# (codes MIS0xx). Ruff handles all other linting, so only select MIS to avoid
+# duplicating / conflicting with ruff's pycodestyle+pyflakes coverage.
+[flake8]
+select = MIS

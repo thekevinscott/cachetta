@@ -3,7 +3,7 @@ import { promises as fs, renameSync as realRenameSync, unlinkSync as realUnlinkS
 import { join } from 'path';
 import { deserialize } from 'v8';
 import { writeCache, writeCacheSync } from './write-cache.js';
-import { Cachetta } from './Cachetta.js'; // mock-enforce-ignore: real Cachetta config object used as a plain-data fixture
+import { Cachetta } from './Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta config object used as a plain-data fixture
 import { InvalidPathError } from './errors.js';
 import type * as _fs from 'fs';
 

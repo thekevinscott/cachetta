@@ -6,6 +6,7 @@ test_watch:
 
 lint:
 	uvx ruff check $(filter-out $@,$(MAKECMDGOALS))
+	uv run flake8 tests
 
 typecheck:
 	uv run ty check

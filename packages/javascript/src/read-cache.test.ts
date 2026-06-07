@@ -3,10 +3,10 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { serialize } from 'v8';
 import { readCache, readCacheSync, readStaleCache, readStaleCacheSync } from './read-cache.js';
-import { writeCache, writeCacheSync } from './write-cache.js'; // mock-enforce-ignore: real writeCache seeds on-disk cache fixtures for the read path
-import { Cachetta } from './Cachetta.js'; // mock-enforce-ignore: real Cachetta config object used as a plain-data fixture
+import { writeCache, writeCacheSync } from './write-cache.js'; // eslint-disable-line mock-isolation/collaborators -- real writeCache seeds on-disk cache fixtures for the read path
+import { Cachetta } from './Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta config object used as a plain-data fixture
 import { CachettaError, InvalidPathError } from './errors.js';
-import * as shouldUseReadCacheModule from './utils/should-use-read-cache.js'; // mock-enforce-ignore: namespace import spied via vi.spyOn rather than vi.mock
+import * as shouldUseReadCacheModule from './utils/should-use-read-cache.js'; // eslint-disable-line mock-isolation/collaborators -- namespace import spied via vi.spyOn rather than vi.mock
 
 
 describe('readCache', () => {
