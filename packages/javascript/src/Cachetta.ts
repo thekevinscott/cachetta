@@ -4,9 +4,11 @@ import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
 import { validateCachePath } from './utils/validate-cache-path.js';
 import { promises as fs, unlinkSync } from 'fs';
+import { join } from 'path';
 import { inspect } from 'util';
 
 import { LRU_MISS } from './constants.js';
+import { hash } from './hash.js';
 
 const DEFAULT_DURATION = 7 * 24 * 60 * 60 * 1000; // Default 7 days in milliseconds
 
@@ -179,10 +181,11 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   }
 
   _getPath(...args: unknown[]): string {
-    if (typeof this.path === 'string') {
-      return this.path;
+    const base = typeof this.path === 'string' ? this.path : this.path(...args);
+    if (this.hashed && args.length > 0) {
+      return join(base, hash(...args));
     }
-    return this.path(...args);
+    return base;
   }
 
   _lruGet(key: string): unknown | typeof LRU_MISS {

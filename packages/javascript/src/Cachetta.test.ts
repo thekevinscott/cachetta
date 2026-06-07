@@ -250,6 +250,29 @@ describe('Cachetta', () => {
       const cache = new Cachetta({ path: pathFn });
       expect(cache._getPath('foo', 'bar')).toBe('./data/foo-bar.json');
     });
+
+    describe('with hashed: true', () => {
+      it('returns the literal path when no args are given', () => {
+        const cache = new Cachetta({ path: 'cache', hashed: true });
+        expect(cache._getPath()).toBe('cache');
+      });
+
+      it('appends hash(args) as the child filename under the literal path', () => {
+        const cache = new Cachetta({ path: 'cache', hashed: true });
+        const result = cache._getPath('hello');
+        expect(result).toMatch(/^cache\/[a-f0-9]{16}$/);
+        expect(cache._getPath('a')).not.toBe(cache._getPath('b'));
+      });
+
+      it('appends hash(args) under the callable path result', () => {
+        const cache = new Cachetta({
+          path: ((kind: string) => `base/${kind}`) as any,
+          hashed: true,
+        });
+        const result = cache._getPath('users');
+        expect(result).toMatch(/^base\/users\/[a-f0-9]{16}$/);
+      });
+    });
   });
 
   describe('invalidate', () => {

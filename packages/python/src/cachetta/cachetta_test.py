@@ -526,6 +526,23 @@ def describe_get_path_literal_with_args():
         assert cache._get_path("a", "b") == cache._get_path("x", y=1)
 
 
+def describe_get_path_hashed():
+    def test_with_args_appends_hash_under_literal_path():
+        from cachetta.hash import hash as _h
+        cache = Cachetta(path="cache", hashed=True)
+        assert cache._get_path("a") == Path("cache") / _h("a")
+        assert cache._get_path("a") != cache._get_path("b")
+
+    def test_without_args_returns_literal_path():
+        cache = Cachetta(path="cache", hashed=True)
+        assert cache._get_path() == Path("cache")
+
+    def test_with_callable_path_appends_hash_under_callable_result():
+        from cachetta.hash import hash as _h
+        cache = Cachetta(path=lambda kind, **_: f"base/{kind}", hashed=True)
+        assert cache._get_path("users", id=1) == Path("base/users") / _h("users", id=1)
+
+
 def describe_wrap():
     def test_wrap_returns_cached_callable():
         cache = Cachetta(path="x")

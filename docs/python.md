@@ -143,6 +143,50 @@ get_user(1)   # cached at ./cache/users/1.json
 get_user(2)   # cached at ./cache/users/2.json
 ```
 
+### Hashed mode
+
+When you want one file per arg-set *inside* a folder (the common LLM / embedding cache shape), set `hashed=True`. The path you pass is treated as a directory, and entries are written as `{path}/{hash(*args, **kwargs)}`:
+
+```python
+cache = Cachetta(path='./cache/llm', hashed=True)
+
+@cache
+def call(prompt: str):
+    return llm(prompt)
+
+call('hello')   # ./cache/llm/<hash>
+call('world')   # ./cache/llm/<otherhash>
+```
+
+`hashed` is a regular field, so it works at every entrypoint:
+
+```python
+# Constructor
+cache = Cachetta(path='./cache', hashed=True)
+
+# Per-decoration override (creates an isolated copy, base cache is not mutated)
+@base_cache(hashed=True)
+def call(x): ...
+
+# Copy
+hashed_cache = base_cache.copy(hashed=True)
+```
+
+If `path` is callable, it picks the folder and the hash names the file within it — the "shard by one arg, hash by all" pattern:
+
+```python
+cache = Cachetta(path=lambda model, prompt: f'./cache/{model}', hashed=True)
+
+@cache
+def call_llm(model, prompt):
+    return call_api(model, prompt)
+
+call_llm('gpt', 'hi')      # ./cache/gpt/<hash('gpt', 'hi')>
+call_llm('claude', 'hi')   # ./cache/claude/<hash('claude', 'hi')>
+```
+
+`hashed` composes with `condition`, `skip_self`, async functions, and the LRU.
+
 ### Public `hash` helper
 
 The same digest the auto-keyed path uses is exposed as `cachetta.hash`. Use it when you want to construct cache paths manually (e.g. inside a `path=` lambda that keys on a subset of args) and keep them aligned with cachetta's own keying:
