@@ -23,8 +23,6 @@ from cachetta import (
 from cachetta._sentinel import _LRU_MISS
 from cachetta.utils.cache_fn import _in_flight
 
-pytestmark = pytest.mark.integration
-
 
 @pytest.fixture(autouse=True)
 def clear_in_flight():

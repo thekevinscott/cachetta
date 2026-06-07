@@ -64,15 +64,15 @@ The Jekyll site under `docs/` is the canonical reference for end users. Each pac
 - Keep `packages/<pkg>/README.md` aligned with the docs page where the two overlap. The README is intentionally a condensed mirror that links back to `docs/<pkg>.md`.
 
 ### Test coverage
-CI requires the **unit suite** to be **100% covered, including branches**, on **both** packages. Integration tests are deliberately excluded from the measurement, so the figure reflects genuine unit coverage.
+CI requires the **unit suite** to be **100% covered, including branches**, on **both** packages. The unit/integration boundary is **by location**: integration tests live under `tests/` and are deliberately excluded from the measurement, so the figure reflects genuine unit coverage.
 
-- **JS:** `vitest.config.unit.ts` sets `coverage.thresholds` to `100` for lines, branches, functions, and statements over `src/**/*.ts` (unit tests are `src/**/*.test.ts`).
-- **Python:** the unit run is `pytest -m "not integration" --cov=cachetta --cov-branch --cov-fail-under=100`, so both line and branch coverage must be 100%.
+- **JS:** `vitest.config.unit.ts` sets `coverage.thresholds` to `100` for lines, branches, functions, and statements over `src/**/*.ts` (unit tests are colocated `src/**/*.test.ts`; `tests/**` is excluded).
+- **Python:** unit tests are colocated `src/cachetta/**/*_test.py`; the unit run is `pytest src/cachetta --cov=cachetta --cov-branch --cov-fail-under=100`, so both line and branch coverage must be 100%. `[tool.coverage.run]` omits the colocated `*_test.py`. The `pytest.mark.integration` marker is **not** used to draw the boundary — location is (the marker was an unreliable record).
 
-Because the whole unit suite is held at 100%, any new or changed `src/` code is covered by construction; `diff-cover` still runs as a changed-lines backstop. Code covered *only* by an integration test counts as uncovered — the goal is to enforce unit tests.
+Because the whole unit suite is held at 100%, any new or changed `src/` code is covered by construction; `diff-cover` still runs as a changed-lines backstop. **Code covered *only* by an integration test — i.e. anything under `tests/` — counts as uncovered.** The goal is to enforce real unit tests; a root `internals/` boundary guard (run in CI) keeps integration tests from leaking back into the unit measurement.
 
 - For genuinely unreachable / defensive code, use a coverage-ignore hint rather than a fake test: `/* v8 ignore next */` (JS) or `# pragma: no cover` (Python). Use sparingly and only where a test truly cannot reach the branch.
-- Run coverage locally before pushing: `pnpm exec vitest run -c vitest.config.unit.ts --coverage` (JS) and `uv run pytest -m "not integration" --cov=cachetta --cov-branch` (Python).
+- Run coverage locally before pushing: `pnpm exec vitest run -c vitest.config.unit.ts --coverage` (JS) and `uv run pytest src/cachetta --cov=cachetta --cov-branch` (Python).
 
 ## Project Structure
 - `packages/javascript/` - TypeScript implementation (npm: `cachetta`)
@@ -90,7 +90,8 @@ Monorepo managed with `pnpm-workspace.yaml`. Packages are independent - separate
 - 5-second timeout configured globally
 
 ### Python (pytest)
-- **Tests**: `packages/python/tests/`
+- **Unit tests**: `src/cachetta/**/*_test.py` — colocated with source (e.g. `cachetta_test.py` next to `cachetta.py`). These are what the coverage gate measures (`pytest src/cachetta`), and they must mock cross-module collaborators (enforced by `flake8-mock-isolation`).
+- **Integration tests**: `packages/python/tests/` — end-to-end scenarios, excluded from unit coverage by location.
 - Uses `pytest-describe` (`describe_*` / `it_*` blocks) and `pytest-asyncio` (auto mode)
 - Includes performance and developer experience tests
 

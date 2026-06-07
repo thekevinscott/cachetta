@@ -23,9 +23,13 @@ asyncio_mode = "auto"
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%H:%M:%S"
 log_level = "INFO"
-markers = [
-    "integration: end-to-end tests, excluded from the unit coverage suite (run with -m 'not integration')",
-]
+
+[tool.coverage.run]
+# Unit tests are colocated inside the package (src/cachetta/**/*_test.py), so
+# `--cov=cachetta` would otherwise measure the test files themselves. Omit them
+# so the gate reflects coverage of the *source* only — mirrors the JS vitest
+# config excluding `src/**/*.test.ts`.
+omit = ["*_test.py"]
 
 [tool.pytest-watcher]
 now = true
@@ -44,6 +48,12 @@ ignore_patterns = []
 [tool.ty.environment]
 python-version = "3.12"   # matches requires-python = ">= 3.12"
 python-platform = "all"   # check every platform, not just CI's linux
+
+[tool.ty.src]
+# setup.py is a setuptools build shim (it imports setuptools, which isn't in
+# the type-checking environment), not typed application code. Keep it out of
+# ty's scope rather than vendoring setuptools stubs just to satisfy the import.
+exclude = ["setup.py"]
 
 [tool.ty.terminal]
 error-on-warning = true   # any rule left at "warn" fails the build
