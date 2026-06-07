@@ -24,6 +24,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   public lruSize!: number | undefined;
   public condition!: ((result: unknown) => boolean) | undefined;
   public staleDuration!: number | undefined;
+  public hashed!: boolean;
   /** Alias for {@link invalidate}. Deletes the cache file. */
   public clear!: (...args: unknown[]) => Promise<void>;
   /** @internal */
@@ -38,6 +39,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
     this.lruSize = config.lruSize;
     this.condition = config.condition;
     this.staleDuration = config.staleDuration;
+    this.hashed = config.hashed ?? false;
     this._lru = this.lruSize ? new Map() : undefined;
     const boundCall = this.call.bind(this);
     const result = Object.assign(
@@ -79,6 +81,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
       lruSize: kwargs.lruSize ?? this.lruSize,
       condition: kwargs.condition ?? this.condition,
       staleDuration: kwargs.staleDuration ?? this.staleDuration,
+      hashed: kwargs.hashed ?? this.hashed,
     });
   }
 

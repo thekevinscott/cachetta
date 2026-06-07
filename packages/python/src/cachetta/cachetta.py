@@ -42,6 +42,7 @@ class Cachetta:
     stale_duration: timedelta | None = None
     skip_self: bool = False
     allowed_pickle_types: set[type] | None = None
+    hashed: bool = False
     _lru: OrderedDict | None = field(default=None, repr=False, compare=False)
     _lru_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 

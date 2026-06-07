@@ -1161,3 +1161,319 @@ def describe_literal_path_with_args():
             # Args to invalidate should also resolve to the literal path
             cache.invalidate("anything")
             assert not cache_path.exists()
+
+
+# -- `hashed=True` flag (issue #44) --
+
+def describe_hashed_flag():
+    """`Cachetta(hashed=True)` (or `@cache(hashed=True)` override) treats `path`
+    as a folder and resolves arg-bearing calls to `{path}/{hash(args)}`.
+    Off (`hashed=False`, the default), `path` is literal — the behavior shipped
+    in #48. The flag is a regular dataclass field, so it composes through the
+    constructor, `cache.copy(...)`, and the `@cache(**kwargs)` decorator
+    override, with each `@cache(hashed=True)` creating an isolated copy that
+    does not mutate the base cache.
+    """
+
+    def test_decorator_override_writes_per_arg_inside_path_folder():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "llm"
+            cache = Cachetta(path=str(cache_dir))
+
+            @cache(hashed=True)
+            def call(prompt):
+                return "response: " + prompt
+
+            result = call("hello")
+            assert result == "response: hello"
+
+            files = list(cache_dir.iterdir())
+            assert len(files) == 1
+            assert files[0].parent == cache_dir
+            assert files[0].suffix == ""
+
+    def test_decorator_override_different_args_produce_different_files():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir))
+
+            @cache(hashed=True)
+            def call(x):
+                return x * 2
+
+            call(1)
+            call(2)
+            call(3)
+
+            files = list(cache_dir.iterdir())
+            assert len(files) == 3
+
+    def test_decorator_override_same_args_hits_cache():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            call_count = 0
+            cache = Cachetta(path=f"{tmpdir}/cache")
+
+            @cache(hashed=True)
+            def call(x):
+                nonlocal call_count
+                call_count += 1
+                return x * 2
+
+            r1 = call(5)
+            r2 = call(5)
+            assert r1 == r2 == 10
+            assert call_count == 1
+
+    def test_multiple_decorations_with_and_without_hashed_are_isolated():
+        """The base `cache` instance is not mutated by `@cache(hashed=True)`;
+        a follow-up `@cache` (plain) on the same base still writes literally.
+        This is the critical isolation guarantee for the `__call__` + `replace()`
+        copy semantics.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/literal.json")
+
+            @cache(path=f"{tmpdir}/hashed", hashed=True)
+            def hashed_fn(x):
+                return x
+
+            @cache  # uses the base cache; hashed is False
+            def literal_fn():
+                return "constant"
+
+            hashed_fn("a")
+            hashed_fn("b")
+            literal_fn()
+            literal_fn()  # cached
+
+            # Hashed entries live as per-arg files inside the folder
+            hashed_dir = Path(tmpdir) / "hashed"
+            assert hashed_dir.is_dir()
+            assert len(list(hashed_dir.iterdir())) == 2
+
+            # The literal decorator wrote to the base cache's literal path
+            literal_path = Path(tmpdir) / "literal.json"
+            assert literal_path.is_file()
+
+            # The base cache itself was never mutated
+            assert cache.hashed is False
+
+    def test_constructor_hashed_true_applies_to_all_entrypoints():
+        """Setting `hashed=True` on the Cachetta itself (not just the decorator
+        override) makes every entry point — read/write helpers, exists,
+        invalidate, the decorator — hash the same way.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir), hashed=True)
+
+            write_cache(cache, {"x": 1}, "hello")
+
+            assert cache.exists("hello") is True
+            assert cache.exists("other") is False
+
+            with read_cache(cache, "hello") as data:
+                pass
+            assert data == {"x": 1}
+
+            cache.invalidate("hello")
+            assert cache.exists("hello") is False
+
+    def test_copy_preserves_and_overrides_hashed():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/cache", hashed=True)
+            preserved = cache.copy()
+            overridden = cache.copy(hashed=False)
+
+            assert preserved.hashed is True
+            assert overridden.hashed is False
+
+    def test_callable_path_composes_with_hashed():
+        """When `path` is callable and `hashed=True`, the callable is evaluated
+        with the wrapped function's args to produce a folder, and the hash of
+        those same args is appended as the child filename. This is the
+        "shard by one arg, hash by all" pattern.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(
+                path=lambda model, prompt: f"{tmpdir}/{model}",
+                hashed=True,
+            )
+
+            @cache
+            def call(model, prompt):
+                return f"{model}: {prompt}"
+
+            call("gpt", "hi")
+            call("gpt", "bye")
+            call("claude", "hi")
+
+            assert len(list(Path(tmpdir, "gpt").iterdir())) == 2
+            assert len(list(Path(tmpdir, "claude").iterdir())) == 1
+
+    def test_callable_path_with_hashed_through_direct_helpers():
+        """`read_cache` / `write_cache` / `exists` / `invalidate` go through
+        the same `_get_path` consultation as the decorator: the callable picks
+        the bucket, the hash names the file. So direct helper calls and the
+        decorator agree on the resolved path.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(
+                path=lambda kind, item: f"{tmpdir}/{kind}",
+                hashed=True,
+            )
+
+            write_cache(cache, {"v": 1}, "users", 7)
+
+            with read_cache(cache, "users", 7) as data:
+                pass
+            assert data == {"v": 1}
+
+            assert cache.exists("users", 7) is True
+            assert cache.exists("users", 8) is False
+
+            cache.invalidate("users", 7)
+            assert cache.exists("users", 7) is False
+
+    def test_callable_path_with_hashed_isolation_across_decorations():
+        """A base cache with a callable `path` can host both `@cache(hashed=True)`
+        and plain `@cache` without one affecting the other.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=lambda kind, **_: f"{tmpdir}/{kind}")
+
+            @cache(hashed=True)
+            def hashed_fn(kind, *, prompt):
+                return prompt
+
+            @cache
+            def literal_fn(kind):
+                return "constant"
+
+            hashed_fn("users", prompt="a")
+            hashed_fn("users", prompt="b")
+            literal_fn("singletons")
+
+            # Hashed wrote two per-arg files inside {tmpdir}/users
+            assert len(list(Path(tmpdir, "users").iterdir())) == 2
+
+            # Literal wrote a single file at {tmpdir}/singletons
+            assert Path(tmpdir, "singletons").is_file()
+
+            # Base cache untouched
+            assert cache.hashed is False
+
+    def test_callable_path_returning_pathlib_path_composes_with_hashed():
+        """A callable returning `Path(...)` (not just `str`) still composes:
+        result of the callable is treated as the folder and the hash is appended.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(
+                path=lambda kind: Path(tmpdir) / kind,
+                hashed=True,
+            )
+
+            @cache
+            def call(kind):
+                return f"hi {kind}"
+
+            call("a")
+            call("b")
+
+            assert (Path(tmpdir) / "a").is_dir()
+            assert (Path(tmpdir) / "b").is_dir()
+            assert len(list((Path(tmpdir) / "a").iterdir())) == 1
+            assert len(list((Path(tmpdir) / "b").iterdir())) == 1
+
+    def test_condition_gates_writes_under_hashed():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(
+                path=str(cache_dir),
+                hashed=True,
+                condition=lambda r: r is not None,
+            )
+
+            @cache
+            def call(x):
+                return None if x == "skip" else x
+
+            call("skip")
+            assert not cache_dir.exists() or len(list(cache_dir.iterdir())) == 0
+
+            call("keep")
+            assert len(list(cache_dir.iterdir())) == 1
+
+    def test_skip_self_honored_under_hashed():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir), hashed=True, skip_self=True)
+
+            class Service:
+                @cache
+                def call(self, prompt):
+                    return prompt.upper()
+
+            s1 = Service()
+            s2 = Service()
+            assert s1.call("hello") == "HELLO"
+            assert s2.call("hello") == "HELLO"
+            assert len(list(cache_dir.iterdir())) == 1
+
+    async def test_hashed_works_with_async_functions():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir), hashed=True)
+
+            call_count = 0
+
+            @cache
+            async def call(prompt):
+                nonlocal call_count
+                call_count += 1
+                return "resp: " + prompt
+
+            r1 = await call("hi")
+            r2 = await call("hi")
+            assert r1 == r2 == "resp: hi"
+            assert call_count == 1
+
+    def test_decorator_override_can_flip_hashed_off():
+        """`@cache(hashed=False)` on a cache constructed with `hashed=True`
+        produces a literal-mode decoration for that function only."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            literal_path = Path(tmpdir) / "literal.json"
+            cache = Cachetta(path=str(literal_path), hashed=True)
+
+            @cache(hashed=False)
+            def literal_fn():
+                return "constant"
+
+            literal_fn()
+            assert literal_path.is_file()
+            # The base cache still has hashed=True
+            assert cache.hashed is True
+
+    def test_default_hashed_is_false_for_backwards_compat():
+        """Constructing without `hashed=` keeps the post-#48 literal-path
+        semantic: no implicit hashing of args."""
+        cache = Cachetta(path="cache/data.json")
+        assert cache.hashed is False
+        assert cache._get_path("a") == Path("cache/data.json")
+        assert cache._get_path("a") == cache._get_path("b")
+
+    def test_hashed_matches_public_hash_digest():
+        """The filename `hashed=True` writes is exactly `cachetta.hash(*args, **kwargs)`."""
+        from cachetta import hash as cachetta_hash
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=str(cache_dir), hashed=True)
+
+            @cache
+            def call(x):
+                return x
+
+            call("hello")
+            expected = cache_dir / cachetta_hash("hello")
+            assert expected.exists()
