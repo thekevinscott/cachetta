@@ -49,6 +49,12 @@ ignore_patterns = []
 python-version = "3.12"   # matches requires-python = ">= 3.12"
 python-platform = "all"   # check every platform, not just CI's linux
 
+[tool.ty.src]
+# setup.py is a setuptools build shim (it imports setuptools, which isn't in
+# the type-checking environment), not typed application code. Keep it out of
+# ty's scope rather than vendoring setuptools stubs just to satisfy the import.
+exclude = ["setup.py"]
+
 [tool.ty.terminal]
 error-on-warning = true   # any rule left at "warn" fails the build
 
