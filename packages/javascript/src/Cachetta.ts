@@ -4,9 +4,11 @@ import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
 import { validateCachePath } from './utils/validate-cache-path.js';
 import { promises as fs, unlinkSync } from 'fs';
+import { join } from 'path';
 import { inspect } from 'util';
 
 import { LRU_MISS } from './constants.js';
+import { hash } from './hash.js';
 
 const DEFAULT_DURATION = 7 * 24 * 60 * 60 * 1000; // Default 7 days in milliseconds
 
@@ -24,6 +26,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   public lruSize!: number | undefined;
   public condition!: ((result: unknown) => boolean) | undefined;
   public staleDuration!: number | undefined;
+  public hashed!: boolean;
   /** Alias for {@link invalidate}. Deletes the cache file. */
   public clear!: (...args: unknown[]) => Promise<void>;
   /** @internal */
@@ -38,6 +41,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
     this.lruSize = config.lruSize;
     this.condition = config.condition;
     this.staleDuration = config.staleDuration;
+    this.hashed = config.hashed ?? false;
     this._lru = this.lruSize ? new Map() : undefined;
     const boundCall = this.call.bind(this);
     const result = Object.assign(
@@ -79,6 +83,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
       lruSize: kwargs.lruSize ?? this.lruSize,
       condition: kwargs.condition ?? this.condition,
       staleDuration: kwargs.staleDuration ?? this.staleDuration,
+      hashed: kwargs.hashed ?? this.hashed,
     });
   }
 
@@ -176,10 +181,11 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   }
 
   _getPath(...args: unknown[]): string {
-    if (typeof this.path === 'string') {
-      return this.path;
+    const base = typeof this.path === 'string' ? this.path : this.path(...args);
+    if (this.hashed && args.length > 0) {
+      return join(base, hash(...args));
     }
-    return this.path(...args);
+    return base;
   }
 
   _lruGet(key: string): unknown | typeof LRU_MISS {

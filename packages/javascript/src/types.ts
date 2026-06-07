@@ -8,6 +8,8 @@ export interface CacheConfig<Path extends string | PathFn<any> = string> {
   condition?: (result: unknown) => boolean;
   /** Duration in ms after `duration` expires during which stale data is returned while a background refresh runs. */
   staleDuration?: number;
+  /** When true, arg-bearing calls resolve to `{path}/{hash(...args)}` — one file per arg-set inside the folder. Off (default) keeps the literal-path semantic. */
+  hashed?: boolean;
 }
 
 export interface CacheInfo {

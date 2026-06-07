@@ -14,6 +14,15 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   `path:` callables or external indexes that line up with cachetta's own
   keying without re-implementing the hasher. Note: the digest is **not**
   cross-language portable with the Python `hash` export.
+- New `hashed: boolean` field on `CacheConfig`. When set, arg-bearing
+  calls resolve to `{path}/{hash(...args)}` — one file per argument-set
+  inside the folder named by `path` — the common LLM / embedding cache
+  shape. Available at construction (`new Cachetta({ path, hashed: true })`),
+  via `cache.copy({ hashed: true })`, and as a per-wrap override
+  (`cache(fn, { hashed: true })`). Composes with a callable `path`: the
+  callable produces the folder, the hash becomes the child filename.
+  Honors `condition`. Off by default — preserves the post-#48
+  literal-path semantics.
 
 ### Changed
 - The published tarball now ships `docs/` **recursively**, so markdown

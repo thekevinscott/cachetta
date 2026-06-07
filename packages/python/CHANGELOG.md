@@ -8,6 +8,18 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Added
+- New `hashed: bool = False` field on `Cachetta`. When set, arg-bearing
+  calls resolve to `{path}/{hash(*args, **kwargs)}` — one file per
+  argument-set inside the folder named by `path` — the common LLM /
+  embedding cache shape. Available at construction
+  (`Cachetta(path=..., hashed=True)`), via `cache.copy(hashed=True)`,
+  and as a per-decoration override (`@cache(hashed=True)`). Composes
+  with a callable `path`: the callable produces the folder, the hash
+  becomes the child filename. Honors `condition`, `skip_self`, and
+  works with async functions. Off by default — preserves the post-#48
+  literal-path semantics.
+
 ### Changed
 - Both the source distribution and the installed wheel now ship `docs/`
   **recursively**, so markdown files under nested subdirectories (e.g.

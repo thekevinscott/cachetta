@@ -156,6 +156,48 @@ await getUser(1);   // cached at ./cache/users/1.json
 await getUser(2);   // cached at ./cache/users/2.json
 ```
 
+### Hashed mode
+
+When you want one file per arg-set *inside* a folder (the common LLM / embedding cache shape), set `hashed: true`. The path you pass is treated as a directory, and entries are written as `{path}/{hash(...args)}`:
+
+```javascript
+const cache = new Cachetta({ path: './cache/llm', hashed: true });
+
+const call = cache((prompt) => llm(prompt));
+
+await call('hello');   // ./cache/llm/<hash>
+await call('world');   // ./cache/llm/<otherhash>
+```
+
+`hashed` is a regular field on `CacheConfig`, so it works at every entrypoint:
+
+```javascript
+// Constructor
+const cache = new Cachetta({ path: './cache', hashed: true });
+
+// Per-wrap override (creates an isolated copy, base cache is not mutated)
+const cached = baseCache(fn, { hashed: true });
+
+// Copy
+const hashedCache = baseCache.copy({ hashed: true });
+```
+
+If `path` is a callable, it picks the folder and the hash names the file within it — the "shard by one arg, hash by all" pattern:
+
+```javascript
+const cache = new Cachetta({
+  path: (model, prompt) => `./cache/${model}`,
+  hashed: true,
+});
+
+const callLLM = cache(async (model, prompt) => callApi(model, prompt));
+
+await callLLM('gpt', 'hi');      // ./cache/gpt/<hash('gpt', 'hi')>
+await callLLM('claude', 'hi');   // ./cache/claude/<hash('claude', 'hi')>
+```
+
+`hashed` composes with `condition` and the LRU.
+
 ### Public `hash` helper
 
 The same digest the auto-keyed path uses is exposed as a top-level `hash` export. Use it when you want to construct cache paths manually (e.g. inside a `path:` callable that keys on a subset of args) and keep them aligned with cachetta's own keying:

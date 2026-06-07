@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional
 from pathlib import Path
 from .exceptions import CachettaError, InvalidPathError
 from ._sentinel import _LRU_MISS
+from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
 from .utils.get_last_updated import async_get_last_updated
 
@@ -42,6 +43,7 @@ class Cachetta:
     stale_duration: timedelta | None = None
     skip_self: bool = False
     allowed_pickle_types: set[type] | None = None
+    hashed: bool = False
     _lru: OrderedDict | None = field(default=None, repr=False, compare=False)
     _lru_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
@@ -86,7 +88,8 @@ class Cachetta:
         When path is a callable, it is invoked with the same args/kwargs as
         the wrapped function. When path is a str/Path, it is used verbatim —
         arguments do not affect the resolved path. Use a callable path to
-        vary cache files by argument.
+        vary cache files by argument, or set ``hashed=True`` to write one
+        file per arg-set under ``path``.
         """
         path = self.path
         # A callable path is resolved dynamically at call time with the
@@ -98,6 +101,13 @@ class Cachetta:
             resolved = Path(path(*args, **kwargs))
         else:
             resolved = Path(path)
+
+        # `hashed=True` treats `resolved` as a folder and appends
+        # `hash(*args, **kwargs)` as the child filename. The callable and the
+        # hash see the same args, so the callable picks the bucket and the
+        # hash names the file within it.
+        if self.hashed and (args or kwargs):
+            resolved = resolved / _hash(*args, **kwargs)
 
         if ".." in resolved.parts:
             raise InvalidPathError(
