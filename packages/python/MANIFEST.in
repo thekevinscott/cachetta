@@ -1,2 +1,7 @@
 include README.md CHANGELOG.md MIGRATIONS.md LICENSE
 recursive-include docs *.md
+
+# Colocated unit tests (src/cachetta/**/*_test.py) are not part of the
+# distributed package — keep them out of the sdist (the wheel is handled by the
+# build_py shim in setup.py).
+global-exclude *_test.py
