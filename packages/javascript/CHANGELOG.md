@@ -8,6 +8,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Added
+- Public `hash(...args)` export. Returns the same 16-char hex digest the
+  auto-keyed cache path uses internally, so consumers can build custom
+  `path:` callables or external indexes that line up with cachetta's own
+  keying without re-implementing the hasher. Note: the digest is **not**
+  cross-language portable with the Python `hash` export.
+
 ### Changed
 - The published tarball now ships `docs/` **recursively**, so markdown
   files under nested subdirectories (e.g. `docs/llm/javascript/index.md`)

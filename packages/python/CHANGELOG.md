@@ -23,6 +23,12 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   resolved at call time as `base / fn(*args, **kwargs)`, suited to
   custom file layouts (e.g. kind-routing, id-not-hash filenames). The
   callable's return is validated against `..` traversal.
+- Public `cachetta.hash(*args, **kwargs)` helper. Returns the same
+  16-char hex digest the auto-keyed cache path uses internally, so
+  consumers can build custom `path=` lambdas (or the `/` operator's
+  callable form) or external indexes that line up with cachetta's own
+  keying without re-implementing the hasher. Note: the digest is **not**
+  cross-language portable with the JavaScript `hash` export.
 
 ### Fixed
 - `cache / 'sub'` (string right-hand operand) now produces real
