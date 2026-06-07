@@ -1,15 +1,16 @@
 """flake8 plugin: unit tests must mock their cross-module collaborators.
 
-A unit test (``<name>_test.py``) should exercise one module in isolation. Every
-test file is either a *unit* test (checked here) or an *integration* test
-(marked ``pytestmark = pytest.mark.integration`` and skipped) -- there is no
-third category.
+A unit test exercises one module in isolation. The unit/integration boundary
+is **by location**: unit tests are colocated inside the package as
+``src/<pkg>/**/<name>_test.py`` (next to ``<name>.py``); everything under
+``tests/`` is integration and is out of scope for this plugin. (The old
+``pytestmark = pytest.mark.integration`` marker was an unreliable record and is
+no longer used to draw the boundary.)
 
-For a unit test, this plugin requires:
+For a colocated unit test, this plugin requires:
 
 * it targets exactly one source module, colocated by the ``<name>_test.py`` <->
-  ``<name>.py`` convention (else ``MIS002``: rename it or mark it integration);
-  and
+  ``<name>.py`` convention (else ``MIS002``); and
 * every top-level first-party import is the module under test, a pure value
   module (``<pkg>.exceptions`` / ``<pkg>._sentinel``), or mocked (else
   ``MIS001``).
@@ -38,8 +39,9 @@ MIS001 = (
     "consumer module, or add '# mock-enforce-ignore: <reason>' if intentional"
 )
 MIS002 = (
-    "MIS002 unit test maps to no source module; rename to '<module>_test.py' to "
-    "target one module, or mark `pytestmark = pytest.mark.integration`"
+    "MIS002 unit test maps to no source module; rename to '<module>_test.py' "
+    "colocated with its '<module>.py' under src/, or move it to tests/ "
+    "(integration)"
 )
 
 
@@ -55,29 +57,6 @@ def _roots(file_path: Path) -> tuple[Path, Path, str] | None:
         if len(pkgs) == 1:
             return tests, pkgs[0], pkgs[0].name
     return None
-
-
-def _is_integration(tree: ast.Module) -> bool:
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in node.targets):
-            continue
-        value = node.value
-        marks = value.elts if isinstance(value, ast.List) else [value]
-        for mark in marks:
-            if isinstance(mark, ast.Attribute) and mark.attr == "integration":
-                return True
-    return False
-
-
-def _module_under_test(path: Path, tests_dir: Path, pkg_dir: Path, pkg: str) -> str | None:
-    rel = path.relative_to(tests_dir).with_suffix("")
-    name = rel.name[: -len("_test")]
-    parts = [*rel.parts[:-1], name]
-    if not pkg_dir.joinpath(*parts).with_suffix(".py").exists():
-        return None
-    return ".".join([pkg, *parts])
 
 
 def _first_party_imports(tree: ast.Module, pkg: str) -> list[tuple[str, int, int]]:
@@ -97,7 +76,7 @@ def _first_party_imports(tree: ast.Module, pkg: str) -> list[tuple[str, int, int
 
 class MockIsolationPlugin:
     name = "flake8-mock-isolation"
-    version = "0.1.0"
+    version = "0.2.0"
 
     def __init__(self, tree: ast.Module, filename: str) -> None:
         self._tree = tree
@@ -107,17 +86,25 @@ class MockIsolationPlugin:
         path = Path(self._filename)
         if path.name == "-" or not path.name.endswith("_test.py"):
             return
-        if _is_integration(self._tree):
-            return
         roots = _roots(path)
         if roots is None:
             return
-        tests_dir, pkg_dir, pkg = roots
+        _tests_dir, pkg_dir, pkg = roots
 
-        module_under_test = _module_under_test(path, tests_dir, pkg_dir, pkg)
-        if module_under_test is None:
+        # Unit tests are colocated inside the package. Anything outside it
+        # (e.g. integration tests under tests/) is not a unit test, so it is
+        # out of scope for isolation enforcement.
+        try:
+            rel = path.relative_to(pkg_dir).with_suffix("")
+        except ValueError:
+            return
+
+        name = rel.name[: -len("_test")]
+        parts = [*rel.parts[:-1], name]
+        if not pkg_dir.joinpath(*parts).with_suffix(".py").exists():
             yield (1, 0, MIS002, type(self))
             return
+        module_under_test = ".".join([pkg, *parts])
 
         try:
             lines = path.read_text().splitlines()

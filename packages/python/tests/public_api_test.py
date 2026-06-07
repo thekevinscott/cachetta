@@ -9,11 +9,7 @@ written to disk.
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from cachetta import Cachetta, hash
-
-pytestmark = pytest.mark.integration
 
 
 def describe_hash_export():

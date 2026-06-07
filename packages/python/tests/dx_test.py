@@ -15,8 +15,6 @@ from cachetta.cachetta import Cachetta
 from cachetta.read_cache import read_stale_cache
 from cachetta.write_cache import write_cache_ctx
 
-pytestmark = pytest.mark.integration
-
 
 def describe_unified_call():
     @pytest.fixture(autouse=True)
