@@ -347,6 +347,7 @@ setLogger({
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `path` | `string \| Function` | required | Cache file path or path function |
+| `hashed` | `boolean` | `false` | Treat `path` as a folder; write one file per arg-hash inside it |
 | `read` | `boolean` | `true` | Allow reading from cache |
 | `write` | `boolean` | `true` | Allow writing to cache |
 | `duration` | `number` | 7 days (ms) | Cache TTL in milliseconds |

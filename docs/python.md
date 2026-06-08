@@ -185,7 +185,7 @@ call_llm('gpt', 'hi')      # ./cache/gpt/<hash('gpt', 'hi')>
 call_llm('claude', 'hi')   # ./cache/claude/<hash('claude', 'hi')>
 ```
 
-`hashed` composes with `condition`, `skip_self`, async functions, and the LRU.
+`hashed` composes with `condition`, async functions, and the LRU.
 
 ### Public `hash` helper
 
@@ -285,14 +285,17 @@ with read_cache(cache / 'my-data.json') as data:
     ...
 ```
 
-### Subfolders for auto-hashed entries
+### Per-argument entries in a subfolder
 
-When the right-hand side is a string with no file extension, the result is a real subfolder. Auto-hashed entries from a decorated function live *inside* that folder rather than as hyphenated siblings:
+`cache / 'name'` joins a sub-path and returns a new `Cachetta` scoped to it. A
+decorated function writes a single file there, used verbatim regardless of its
+arguments. To get one file per argument set *inside* the folder, combine the
+join with `hashed=True`:
 
 ```python
-cache = Cachetta(path='./cache') / 'llm-calls'
+llm_cache = (Cachetta(path='./cache') / 'llm-calls')(hashed=True)
 
-@cache
+@llm_cache
 def call_llm(prompt):
     ...
 
@@ -417,6 +420,7 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `path` | `str \| Callable` | required | Cache file path or path function |
+| `hashed` | `bool` | `False` | Treat `path` as a folder; write one file per arg-hash inside it |
 | `read` | `bool` | `True` | Allow reading from cache |
 | `write` | `bool` | `True` | Allow writing to cache |
 | `duration` | `timedelta` | 7 days | Cache TTL |
