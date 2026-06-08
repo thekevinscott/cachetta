@@ -1,0 +1,12 @@
+name: Release Config Check
+
+# putitoutthere's pre-merge config validation. Runs every config check the
+# release engine knows about (e.g. PIOT_PYPI_NAME_MISMATCH) on every PR, so a
+# malformed putitoutthere.toml / package manifest fails here in seconds rather
+# than surfacing minutes into a release run on main.
+on:
+  pull_request:
+
+jobs:
+  check:
+    uses: thekevinscott/putitoutthere/.github/workflows/check.yml@v0
