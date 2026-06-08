@@ -1477,3 +1477,69 @@ def describe_hashed_flag():
             call("hello")
             expected = cache_dir / cachetta_hash("hello")
             assert expected.exists()
+
+
+# -- Automatic method-receiver exclusion (issue #77) --
+
+def describe_method_receiver_auto_skip():
+    """Decorating an instance/class method excludes the receiver (self/cls)
+    from the cache key automatically — no `skip_self` flag required. A free
+    function's first positional argument is a genuine input and is kept.
+    """
+
+    def test_self_excluded_from_hashed_key_across_instances():
+        # Two instances calling the method with equal args must share one
+        # cache file and compute exactly once: the receiver must not enter
+        # the key.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            calls = []
+
+            cache = Cachetta(path=str(cache_dir), hashed=True)
+
+            class Service:
+                @cache
+                def call(self, prompt):
+                    calls.append(prompt)
+                    return prompt.upper()
+
+            s1 = Service()
+            s2 = Service()
+            assert s1.call("hello") == "HELLO"
+            assert s2.call("hello") == "HELLO"
+            assert len(list(cache_dir.iterdir())) == 1
+            assert calls == ["hello"]
+
+    def test_callable_path_receives_only_real_args():
+        # The path callable models the method's real signature (no `self`);
+        # the receiver must be stripped before the path is resolved.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=lambda name: f"{tmpdir}/{name}.json")
+
+            class Service:
+                @cache
+                def get_data(self, name):
+                    return {"name": name}
+
+            svc = Service()
+            assert svc.get_data("test") == {"name": "test"}
+            assert (Path(tmpdir) / "test.json").exists()
+
+    def test_plain_function_keeps_first_positional_arg_in_key():
+        # Guard against over-stripping: a free function's first arg is a real
+        # input, so distinct values must produce distinct cache files.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            calls = []
+
+            cache = Cachetta(path=str(cache_dir), hashed=True)
+
+            @cache
+            def compute(x):
+                calls.append(x)
+                return x * 2
+
+            assert compute(1) == 2
+            assert compute(2) == 4
+            assert len(list(cache_dir.iterdir())) == 2
+            assert calls == [1, 2]

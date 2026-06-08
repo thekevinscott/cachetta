@@ -8,6 +8,14 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Removed
+- The `skip_self` flag has been removed. Excluding the receiver
+  (`self`/`cls`) from the cache key when decorating instance/class methods
+  is now automatic — the decorator detects method binding and strips the
+  receiver before resolving the path/hash, while free functions keep their
+  first positional argument. Callers passing `skip_self=` must drop it; see
+  [MIGRATIONS.md](./MIGRATIONS.md). (#77)
+
 ### Added
 - New `hashed: bool = False` field on `Cachetta`. When set, arg-bearing
   calls resolve to `{path}/{hash(*args, **kwargs)}` — one file per
