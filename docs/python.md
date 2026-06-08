@@ -345,7 +345,7 @@ new_cache = cache.copy(
 
 ## Method Decorators
 
-Decorating an instance or class method just works — the receiver (`self`/`cls`) is automatically excluded from the cache key, so calls with equal arguments share a cache entry regardless of which instance makes them. No flag is required:
+Methods work as-is; the receiver (`self`/`cls`) is not part of the cache key.
 
 ```python
 class DataService:
@@ -353,10 +353,6 @@ class DataService:
     def get_data(self, user_id):
         return fetch_user(user_id)
 ```
-
-The receiver is still passed to your method (instance state is available inside it); it simply doesn't contribute to the cache key or path. A plain (non-method) function keeps all of its positional arguments in the key.
-
-> **Removed in v0.7:** the `skip_self` option no longer exists — receiver exclusion is automatic. See [MIGRATIONS.md](https://github.com/thekevinscott/cachetta/blob/main/packages/python/MIGRATIONS.md).
 
 ## Pickle Security
 

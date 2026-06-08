@@ -9,11 +9,8 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 ## [Unreleased]
 
 ### Removed
-- The `skip_self` flag has been removed. Excluding the receiver
-  (`self`/`cls`) from the cache key when decorating instance/class methods
-  is now automatic — the decorator detects method binding and strips the
-  receiver before resolving the path/hash, while free functions keep their
-  first positional argument. Callers passing `skip_self=` must drop it; see
+- The `skip_self` flag — the receiver (`self`/`cls`) is now excluded from
+  the cache key automatically. Drop `skip_self=`; see
   [MIGRATIONS.md](./MIGRATIONS.md). (#77)
 
 ### Added

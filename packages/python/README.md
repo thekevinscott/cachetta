@@ -153,7 +153,7 @@ new_cache = cache.copy(read=False, duration=timedelta(days=2))
 
 ## Method Decorators
 
-The receiver (`self`/`cls`) is excluded from the cache key automatically — no flag needed:
+Methods work as-is; the receiver (`self`/`cls`) is not part of the cache key.
 
 ```python
 class DataService:
