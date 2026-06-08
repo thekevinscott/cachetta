@@ -1,20 +1,13 @@
 import asyncio
+from types import MethodType
 from typing import Callable
-from functools import wraps
+from functools import update_wrapper, wraps
 from ..read_cache import read_cache, read_stale_cache, async_read_cache, async_read_stale_cache
 from ..write_cache import write_cache, async_write_cache
 from .logger import logger
 
 # In-flight asyncio task deduplication keyed by resolved cache path
 _in_flight: dict[str, asyncio.Task] = {}
-
-
-def _resolve_args(cache, args, kwargs):
-    """If skip_self is set, strip the first positional arg for cache path resolution
-    but keep original args for function invocation."""
-    if cache.skip_self and args:
-        return args[1:], kwargs
-    return args, kwargs
 
 
 def _should_cache(cache, result) -> bool:
@@ -24,10 +17,9 @@ def _should_cache(cache, result) -> bool:
     return cache.condition(result)
 
 
-def cache_fn(cache, fn: Callable) -> Callable:
+def _build(cache, fn: Callable) -> Callable:
     # `Callable` doesn't statically expose `__name__`; resolve it once (with a
-    # safe fallback for callables that lack it) for the log messages below,
-    # which reach it through closure from the nested wrappers.
+    # safe fallback) for the log messages below.
     fn_name = getattr(fn, "__name__", repr(fn))
     if asyncio.iscoroutinefunction(fn):
         logger.debug("Decorating async function %s", fn_name)
@@ -35,25 +27,24 @@ def cache_fn(cache, fn: Callable) -> Callable:
         @wraps(fn)
         async def async_wrapper(*args, **kwargs):
             logger.debug("Executing async function %s with read_cache", fn_name)
-            cache_args, cache_kwargs = _resolve_args(cache, args, kwargs)
 
-            async with async_read_cache(cache, *cache_args, **cache_kwargs) as data:
+            async with async_read_cache(cache, *args, **kwargs) as data:
                 if data is not None:
                     logger.debug("Data is not None, returning data for %s", fn_name)
                     return data
 
-                cache_key = str(cache._get_path(*cache_args, **cache_kwargs))
+                cache_key = str(cache._get_path(*args, **kwargs))
 
                 # Stale-while-revalidate: return stale data and refresh in background
                 if cache.stale_duration:
-                    stale_data = await async_read_stale_cache(cache, *cache_args, **cache_kwargs)
+                    stale_data = await async_read_stale_cache(cache, *args, **kwargs)
                     if stale_data is not None:
                         if cache_key not in _in_flight:
                             async def _bg_refresh():
                                 try:
                                     result = await fn(*args, **kwargs)
                                     if _should_cache(cache, result):
-                                        await async_write_cache(cache, result, *cache_args, **cache_kwargs)
+                                        await async_write_cache(cache, result, *args, **kwargs)
                                 except Exception as e:
                                     logger.error("Background revalidation failed for %s: %s", cache_key, e)
 
@@ -73,7 +64,7 @@ def cache_fn(cache, fn: Callable) -> Callable:
                         result = await fn(*args, **kwargs)
                         logger.debug("Executed async function %s, writing data to %s", fn_name, cache.path)
                         if _should_cache(cache, result):
-                            await async_write_cache(cache, result, *cache_args, **cache_kwargs)
+                            await async_write_cache(cache, result, *args, **kwargs)
                             logger.debug("Wrote data for %s to %s", fn_name, cache.path)
                         return result
                     except Exception as e:
@@ -94,14 +85,13 @@ def cache_fn(cache, fn: Callable) -> Callable:
         @wraps(fn)
         def sync_wrapper(*args, **kwargs):
             logger.debug("Executing sync function %s with read_cache", fn_name)
-            cache_args, cache_kwargs = _resolve_args(cache, args, kwargs)
 
-            with read_cache(cache, *cache_args, **cache_kwargs) as data:
+            with read_cache(cache, *args, **kwargs) as data:
                 if data is None:
                     # Stale-while-revalidate for sync: return stale data
                     # (no background refresh possible in sync context)
                     if cache.stale_duration:
-                        stale_data = read_stale_cache(cache, *cache_args, **cache_kwargs)
+                        stale_data = read_stale_cache(cache, *args, **kwargs)
                         if stale_data is not None:
                             logger.debug("Returning stale cache for %s", fn_name)
                             return stale_data
@@ -111,7 +101,7 @@ def cache_fn(cache, fn: Callable) -> Callable:
                         data = fn(*args, **kwargs)
                         logger.debug("Executed sync function %s, writing data to %s", fn_name, cache.path)
                         if _should_cache(cache, data):
-                            write_cache(cache, data, *cache_args, **cache_kwargs)
+                            write_cache(cache, data, *args, **kwargs)
                             logger.debug("Wrote data for %s to %s", fn_name, cache.path)
                     except Exception as e:
                         logger.error("Error executing sync function %s: %s", fn_name, e)
@@ -121,3 +111,29 @@ def cache_fn(cache, fn: Callable) -> Callable:
                 return data
 
         return sync_wrapper
+
+
+class _Cached:
+    """Descriptor wrapper so method decorations exclude the receiver from the
+    cache key. On access through an instance, Python calls ``__get__`` and we
+    bind ``fn`` to that instance; the bound method absorbs ``self``/``cls``, so
+    the wrapper's args — and thus the key — contain only the real arguments.
+    """
+
+    def __init__(self, cache, fn: Callable):
+        self._cache = cache
+        self._fn = fn
+        self._wrapped = _build(cache, fn)
+        update_wrapper(self, fn)
+
+    def __get__(self, instance, owner=None):
+        if instance is None:
+            return self
+        return _Cached(self._cache, MethodType(self._fn, instance))
+
+    def __call__(self, *args, **kwargs):
+        return self._wrapped(*args, **kwargs)
+
+
+def cache_fn(cache, fn: Callable) -> Callable:
+    return _Cached(cache, fn)

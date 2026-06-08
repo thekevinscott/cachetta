@@ -153,9 +153,11 @@ new_cache = cache.copy(read=False, duration=timedelta(days=2))
 
 ## Method Decorators
 
+Methods work as-is; the receiver (`self`/`cls`) is not part of the cache key.
+
 ```python
 class DataService:
-    @Cachetta(path='./cache.json', skip_self=True)
+    @Cachetta(path=lambda user_id: f'./cache/{user_id}.json')
     def get_data(self, user_id):
         ...
 ```
@@ -197,7 +199,6 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 | `lru_size` | `int` | `None` |
 | `condition` | `Callable` | `None` |
 | `stale_duration` | `timedelta` | `None` |
-| `skip_self` | `bool` | `False` |
 | `allowed_pickle_types` | `set[type]` | `None` |
 
 [→ Configuration Reference](./docs/python.md#configuration-reference)

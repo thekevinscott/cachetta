@@ -82,4 +82,4 @@ Cachetta uses native binary serialization in both languages -- **pickle** in Pyt
 | Prototype pollution protection | Yes | N/A |
 | Restricted deserialization | N/A (v8 is safe) | Yes |
 | `/` path operator | -- | Yes |
-| `skip_self` for method decorators | -- | Yes |
+| Method decorators (`self`/`cls` auto-excluded from key) | -- | Yes |

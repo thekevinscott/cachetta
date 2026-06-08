@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from cachetta.cachetta import Cachetta  # mock-enforce-ignore: real Cachetta config object used as a plain-data fixture
-from cachetta.utils.cache_fn import _resolve_args, _should_cache, _in_flight
+from cachetta.utils.cache_fn import _should_cache, _in_flight
 
 
 @pytest.fixture(autouse=True)
@@ -40,23 +40,75 @@ def _make_stale_file(path, data):
     os.utime(path, (old, old))
 
 
-def describe_resolve_args():
-    def test_strips_first_positional_arg_when_skip_self():
-        cache = SimpleNamespace(skip_self=True)
-        args, kwargs = _resolve_args(cache, ("self", 1, 2), {"k": "v"})
-        assert args == (1, 2)
-        assert kwargs == {"k": "v"}
+def describe_descriptor_binding():
+    def test_access_via_class_returns_the_wrapper_itself():
+        """Accessing the decorated attribute on the class (instance is None)
+        returns the unbound wrapper, so it behaves as a plain callable."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/c.dat")
 
-    def test_keeps_args_when_skip_self_but_no_positional_args():
-        cache = SimpleNamespace(skip_self=True)
-        args, kwargs = _resolve_args(cache, (), {"k": "v"})
-        assert args == ()
-        assert kwargs == {"k": "v"}
+            class Service:
+                @cache
+                def get(self, x):
+                    return x
 
-    def test_keeps_all_args_when_not_skip_self():
-        cache = SimpleNamespace(skip_self=False)
-        args, kwargs = _resolve_args(cache, ("self", 1), {})
-        assert args == ("self", 1)
+            # Unbound access hits the `instance is None` branch of __get__.
+            assert Service.__dict__["get"].__get__(None, Service) is Service.__dict__["get"]
+
+    def test_bound_method_excludes_receiver_from_cache_key():
+        """Two instances calling the method with equal args resolve to one
+        cache file: the receiver is bound for invocation but excluded from
+        the key."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            calls = []
+            cache = Cachetta(path=str(cache_dir), hashed=True)
+
+            class Service:
+                @cache
+                def get(self, x):
+                    calls.append(x)
+                    return x * 2
+
+            assert Service().get(3) == 6
+            assert Service().get(3) == 6
+            assert len(list(cache_dir.iterdir())) == 1
+            assert calls == [3]
+
+    def test_bound_method_passes_receiver_to_the_wrapped_fn():
+        """The bound receiver is still handed to the wrapped function, so
+        instance state is available inside it."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=lambda x: f"{tmpdir}/{x}.dat")
+
+            class Service:
+                def __init__(self, factor):
+                    self.factor = factor
+
+                @cache
+                def get(self, x):
+                    return x * self.factor
+
+            assert Service(10).get(5) == 50
+
+    async def test_bound_async_method_excludes_receiver_from_cache_key():
+        """Async methods are bound the same way: the receiver is excluded
+        from the key and passed to the coroutine."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            calls = []
+            cache = Cachetta(path=str(cache_dir), hashed=True)
+
+            class Service:
+                @cache
+                async def get(self, x):
+                    calls.append(x)
+                    return x * 2
+
+            assert await Service().get(4) == 8
+            assert await Service().get(4) == 8
+            assert len(list(cache_dir.iterdir())) == 1
+            assert calls == [4]
 
 
 def describe_should_cache():

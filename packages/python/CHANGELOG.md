@@ -8,6 +8,11 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Removed
+- The `skip_self` flag — the receiver (`self`/`cls`) is now excluded from
+  the cache key automatically. Drop `skip_self=`; see
+  [MIGRATIONS.md](./MIGRATIONS.md). (#77)
+
 ### Added
 - New `hashed: bool = False` field on `Cachetta`. When set, arg-bearing
   calls resolve to `{path}/{hash(*args, **kwargs)}` — one file per
@@ -16,8 +21,8 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   (`Cachetta(path=..., hashed=True)`), via `cache.copy(hashed=True)`,
   and as a per-decoration override (`@cache(hashed=True)`). Composes
   with a callable `path`: the callable produces the folder, the hash
-  becomes the child filename. Honors `condition`, `skip_self`, and
-  works with async functions. Off by default — preserves the post-#48
+  becomes the child filename. Honors `condition` and works with async
+  functions. Off by default — preserves the post-#48
   literal-path semantics.
 
 ### Changed

@@ -345,11 +345,11 @@ new_cache = cache.copy(
 
 ## Method Decorators
 
-Use `skip_self=True` when decorating instance methods to exclude `self` from cache key hashing:
+Methods work as-is; the receiver (`self`/`cls`) is not part of the cache key.
 
 ```python
 class DataService:
-    @Cachetta(path='./cache.json', skip_self=True)
+    @Cachetta(path=lambda user_id: f'./cache/{user_id}.json')
     def get_data(self, user_id):
         return fetch_user(user_id)
 ```
@@ -423,5 +423,4 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 | `lru_size` | `int` | `None` | Max in-memory LRU entries |
 | `condition` | `Callable` | `None` | Predicate to decide whether to cache |
 | `stale_duration` | `timedelta` | `None` | Time past expiry to serve stale data |
-| `skip_self` | `bool` | `False` | Exclude `self` from cache key hashing |
 | `allowed_pickle_types` | `set[type]` | `None` | Additional types to allow during deserialization |

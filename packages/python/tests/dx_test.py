@@ -56,7 +56,7 @@ def describe_unified_call():
             assert result == {"x": "hello"}
 
 
-def describe_skip_self():
+def describe_auto_method_receiver():
     @pytest.fixture(autouse=True)
     def mock_write_cache():
         with patch("cachetta.utils.cache_fn.write_cache", new_callable=Mock) as mock:
@@ -71,12 +71,9 @@ def describe_skip_self():
         with patch("cachetta.utils.cache_fn.read_cache", mock):
             yield mock
 
-    def test_skip_self_strips_first_arg_for_cache_path(mock_read_cache):
+    def test_receiver_excluded_from_cache_path_automatically(mock_read_cache):
         with tempfile.TemporaryDirectory() as tmpdir:
-            cache = Cachetta(
-                path=lambda name: f"{tmpdir}/{name}.json",
-                skip_self=True
-            )
+            cache = Cachetta(path=lambda name: f"{tmpdir}/{name}.json")
 
             class MyService:
                 @cache
@@ -87,9 +84,9 @@ def describe_skip_self():
             result = svc.get_data("test")
             assert result == {"name": "test"}
 
-            # The read_cache should have been called with cache_args that exclude self
+            # read_cache is called with the receiver stripped — no skip_self flag.
             call_args = mock_read_cache.call_args
-            # The second positional arg to read_cache is the first cache_arg
+            # The second positional arg to read_cache is the first cache_arg.
             assert call_args[0][1] == "test"
 
 
