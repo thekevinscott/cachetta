@@ -4,6 +4,8 @@ version = 1
 [[package]]
 name = "js/cachetta"
 kind = "npm"
+# Real npm name; the identifier above is js/-prefixed for tag namespacing + uniqueness.
+npm = "cachetta"
 path = "packages/javascript"
 globs = [
   "packages/javascript/src/**",
@@ -21,6 +23,9 @@ access = "public"
 [[package]]
 name = "py/cachetta"
 kind = "pypi"
+# Real PyPI name; the identifier above is py/-prefixed for tag namespacing + uniqueness.
+# Must match pyproject.toml [project].name — piot's pre-flight asserts this.
+pypi = "cachetta"
 build = "setuptools"
 path = "packages/python"
 globs = [
