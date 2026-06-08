@@ -129,8 +129,6 @@ class _Cached:
     def __get__(self, instance, owner=None):
         if instance is None:
             return self
-        # Bind fn to the instance: the bound method absorbs self/cls, so the
-        # wrapper's args (and thus the cache key) exclude the receiver.
         return _Cached(self._cache, MethodType(self._fn, instance))
 
     def __call__(self, *args, **kwargs):
