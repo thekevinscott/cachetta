@@ -345,14 +345,18 @@ new_cache = cache.copy(
 
 ## Method Decorators
 
-Use `skip_self=True` when decorating instance methods to exclude `self` from cache key hashing:
+Decorating an instance or class method just works — the receiver (`self`/`cls`) is automatically excluded from the cache key, so calls with equal arguments share a cache entry regardless of which instance makes them. No flag is required:
 
 ```python
 class DataService:
-    @Cachetta(path='./cache.json', skip_self=True)
+    @Cachetta(path=lambda user_id: f'./cache/{user_id}.json')
     def get_data(self, user_id):
         return fetch_user(user_id)
 ```
+
+The receiver is still passed to your method (instance state is available inside it); it simply doesn't contribute to the cache key or path. A plain (non-method) function keeps all of its positional arguments in the key.
+
+> **Removed in v0.7:** the `skip_self` option no longer exists — receiver exclusion is automatic. See [MIGRATIONS.md](https://github.com/thekevinscott/cachetta/blob/main/packages/python/MIGRATIONS.md).
 
 ## Pickle Security
 
@@ -423,5 +427,4 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 | `lru_size` | `int` | `None` | Max in-memory LRU entries |
 | `condition` | `Callable` | `None` | Predicate to decide whether to cache |
 | `stale_duration` | `timedelta` | `None` | Time past expiry to serve stale data |
-| `skip_self` | `bool` | `False` | Exclude `self` from cache key hashing |
 | `allowed_pickle_types` | `set[type]` | `None` | Additional types to allow during deserialization |

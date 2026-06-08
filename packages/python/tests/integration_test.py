@@ -651,7 +651,6 @@ def describe_construction():
         assert cache.lru_size is None
         assert cache.condition is None
         assert cache.stale_duration is None
-        assert cache.skip_self is False
         assert cache._lru is None
 
     def test_all_parameters():
@@ -665,7 +664,6 @@ def describe_construction():
             lru_size=50,
             condition=cond,
             stale_duration=timedelta(minutes=10),
-            skip_self=True,
         )
         assert cache.write is False
         assert cache.read is False
@@ -673,7 +671,6 @@ def describe_construction():
         assert cache.lru_size == 50
         assert cache.condition is cond
         assert cache.stale_duration == timedelta(minutes=10)
-        assert cache.skip_self is True
         assert cache._lru is not None
 
     def test_path_types():
@@ -1402,22 +1399,6 @@ def describe_hashed_flag():
             assert not cache_dir.exists() or len(list(cache_dir.iterdir())) == 0
 
             call("keep")
-            assert len(list(cache_dir.iterdir())) == 1
-
-    def test_skip_self_honored_under_hashed():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_dir = Path(tmpdir) / "cache"
-            cache = Cachetta(path=str(cache_dir), hashed=True, skip_self=True)
-
-            class Service:
-                @cache
-                def call(self, prompt):
-                    return prompt.upper()
-
-            s1 = Service()
-            s2 = Service()
-            assert s1.call("hello") == "HELLO"
-            assert s2.call("hello") == "HELLO"
             assert len(list(cache_dir.iterdir())) == 1
 
     async def test_hashed_works_with_async_functions():

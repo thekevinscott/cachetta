@@ -31,8 +31,6 @@ class Cachetta:
         condition: Optional callable that receives the result and returns True to cache it.
         stale_duration: Optional duration after expiry during which stale data is returned
             while a background refresh runs.
-        skip_self: When True, strips the first positional argument (self/cls) before
-            passing args to the path function. Useful for decorating class methods.
     """
     path: str | Path | Callable[..., str | Path]
     write: bool = True
@@ -41,7 +39,6 @@ class Cachetta:
     lru_size: int | None = None
     condition: Callable[[Any], bool] | None = None
     stale_duration: timedelta | None = None
-    skip_self: bool = False
     allowed_pickle_types: set[type] | None = None
     hashed: bool = False
     _lru: OrderedDict | None = field(default=None, repr=False, compare=False)

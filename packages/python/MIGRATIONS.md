@@ -28,6 +28,61 @@ One paragraph: what broke and why.
   snippet below.
 -->
 
+## v0.7 → v0.8
+
+### Summary
+The `skip_self` option has been removed. It existed so that decorating an
+instance/class method wouldn't fold the receiver (`self`/`cls`) into the
+cache key, but it worked by blindly stripping the first positional
+argument whenever set — with no check that the call was actually a method,
+so setting it on a plain function silently discarded a real argument.
+Receiver exclusion is now automatic: the decorator detects method binding
+via the descriptor protocol and strips the receiver from key/path
+resolution while still passing it to the wrapped function. Plain functions
+keep all of their positional arguments. Because detection is automatic and
+correct, the flag is no longer needed and passing it raises `TypeError`.
+
+### Required changes
+| Before | After |
+|--------|-------|
+| `@Cachetta(path=fn, skip_self=True)`<br>`def method(self, x): ...` | `@Cachetta(path=fn)`<br>`def method(self, x): ...`<br>_receiver excluded automatically_ |
+| `cache = Cachetta(path=..., skip_self=True)` | `cache = Cachetta(path=...)` |
+| `cache.copy(skip_self=True)` | `cache.copy()` |
+
+### Deprecations removed
+- The `skip_self` field on `Cachetta` (and the `skip_self=` keyword to its
+  constructor, `copy`, and per-decoration overrides). It was never
+  deprecated with a warning; it is removed outright.
+
+### Behavior changes without code changes
+- Decorating an instance/class method now excludes the receiver from the
+  cache key by default. Code that previously relied on the *old default*
+  (`skip_self=False`) to key on the receiver — e.g. a callable `path` or
+  `hashed=True` whose key intentionally varied per instance — will now
+  share cache entries across instances for equal arguments. This was
+  almost never intentional (object identity is not stable across runs),
+  but if you need per-instance partitioning, key on an explicit instance
+  attribute via a callable `path`.
+
+### Verification
+- After upgrading, confirm the receiver no longer reaches a callable path:
+  ```python
+  from cachetta import Cachetta
+
+  seen = []
+  cache = Cachetta(path=lambda x: seen.append(x) or f"/tmp/{x}.dat")
+
+  class Svc:
+      @cache
+      def get(self, x):
+          return x
+
+  Svc().get("a")
+  assert seen == ["a"]  # the path callable saw "a", not (self, "a")
+  ```
+  Pre-upgrade (without `skip_self=True`) this raised `TypeError` because
+  the lambda received `self` as an extra positional argument.
+
 ## v0.6 → v0.7
 
 ### Summary
