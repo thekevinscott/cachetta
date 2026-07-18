@@ -168,11 +168,11 @@ def describe_async_wrapper_stale_while_revalidate():
                 stale_duration=timedelta(days=1),
             )
 
-            @cache
-            async def compute():
+            async def _compute():
                 return {"fresh": True}
 
-            key = _key_for(compute._fn, cache)
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
 
             # Pre-register an in-flight task so the scheduling branch is skipped.
             async def _noop():
@@ -204,12 +204,12 @@ def describe_async_wrapper_stale_while_revalidate():
 
             refreshed = asyncio.Event()
 
-            @cache
-            async def compute():
+            async def _compute():
                 refreshed.set()
                 return {"fresh": True}
 
-            key = _key_for(compute._fn, cache)
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
             result = await compute()
             assert result == {"stale": True}
 
@@ -238,12 +238,12 @@ def describe_async_wrapper_stale_while_revalidate():
 
             ran = asyncio.Event()
 
-            @cache
-            async def compute():
+            async def _compute():
                 ran.set()
                 raise RuntimeError("boom in refresh")
 
-            key = _key_for(compute._fn, cache)
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
             result = await compute()
             assert result == {"stale": True}
 
@@ -361,11 +361,11 @@ def describe_async_wrapper_core():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(path=f"{tmpdir}/dedup.json")  # no stale_duration
 
-            @cache
-            async def compute():
+            async def _compute():
                 return {"computed": True}
 
-            key = _key_for(compute._fn, cache)
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
 
             async def _inflight():
                 await asyncio.sleep(0.05)
@@ -395,11 +395,11 @@ def describe_async_wrapper_core():
                 stale_duration=timedelta(days=1),
             )
 
-            @cache
-            async def compute():
+            async def _compute():
                 return {"refreshed": True}
 
-            key = _key_for(compute._fn, cache)
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
             result = await compute()
             assert result == {"stale": True}
 
@@ -440,26 +440,37 @@ def describe_async_wrapper_core():
 
 
 def describe_pop_if_current():
-    def test_leaves_registry_untouched_when_key_now_points_at_another_task():
+    async def test_leaves_registry_untouched_when_key_now_points_at_another_task():
         """A stale done-callback firing after the key has been claimed by a
         newer task must not evict that newer task from the registry."""
         key = (0, (0, 0), "path")
-        stale_task = SimpleNamespace()
-        current_task = SimpleNamespace()
+
+        async def _noop():
+            return None
+
+        stale_task = asyncio.ensure_future(_noop())
+        current_task = asyncio.ensure_future(_noop())
         _in_flight[key] = current_task
 
         _pop_if_current(key, stale_task)
 
         assert _in_flight[key] is current_task
+        await stale_task
+        await current_task
 
-    def test_removes_entry_when_key_still_points_at_this_task():
+    async def test_removes_entry_when_key_still_points_at_this_task():
         key = (0, (0, 0), "path")
-        task = SimpleNamespace()
+
+        async def _noop():
+            return None
+
+        task = asyncio.ensure_future(_noop())
         _in_flight[key] = task
 
         _pop_if_current(key, task)
 
         assert key not in _in_flight
+        await task
 
 
 def describe_in_flight_scoping():
