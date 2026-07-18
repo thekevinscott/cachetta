@@ -5,7 +5,7 @@ from datetime import timedelta
 from time import time
 from typing import Any, Callable, Optional
 from pathlib import Path
-from .exceptions import CachettaError, InvalidPathError
+from .exceptions import CachettaError
 from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
 from .utils.get_last_updated import async_get_last_updated
@@ -45,6 +45,11 @@ class Cachetta:
         arguments do not affect the resolved path. Use a callable path to
         vary cache files by argument, or set ``hashed=True`` to write one
         file per arg-set under ``path``.
+
+        ``path`` (literal or callable) is trusted input: it is used as given,
+        with no validation against absolute paths, symlinks, or ``..``
+        segments. Cachetta assumes the caller controls this value directly
+        in source — never build it from untrusted/user-supplied data.
         """
         path = self.path
         # A callable path is resolved dynamically at call time with the
@@ -64,11 +69,6 @@ class Cachetta:
         if self.hashed and (args or kwargs):
             resolved = resolved / _hash(*args, **kwargs)
 
-        if ".." in resolved.parts:
-            raise InvalidPathError(
-                "Path traversal detected: %s" % resolved
-            )
-
         return resolved
 
     def __truediv__(self, other) -> "Cachetta":
@@ -81,8 +81,8 @@ class Cachetta:
         - ``cache / fn`` accepts a callable that returns a filename or
           subpath. The callable is invoked at call time with the wrapped
           function's args and joined onto the cache's base folder. Returned
-          paths are validated against ``..`` traversal via the existing
-          ``InvalidPathError`` check in ``_get_path``.
+          paths are used as given — see ``_get_path`` for the trust
+          contract.
         """
         if callable(other):
             base = self._get_path()

@@ -24,6 +24,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 - The in-memory LRU layer, including the `lru_size` constructor option.
   Passing `lru_size` now raises `TypeError`. See
   [MIGRATIONS.md](./MIGRATIONS.md). (Part of #98)
+- The `InvalidPathError` exception and the `..`-segment check in
+  `_get_path`. The check only ever caught literal `..` path segments —
+  absolute paths and symlinks passed through unexamined — so it provided no
+  real guarantee and misleadingly implied one. Cache paths (literal or
+  callable) are now treated as trusted developer input and used as given,
+  with no validation. See [MIGRATIONS.md](./MIGRATIONS.md) and
+  [Path Trust](../../docs/python.md#path-trust). (#85)
 
 ### Added
 - New `hashed: bool = False` field on `Cachetta`. When set, arg-bearing
