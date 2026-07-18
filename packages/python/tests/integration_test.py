@@ -7,7 +7,6 @@ import tempfile
 from datetime import timedelta
 from pathlib import Path
 from time import time
-from cachetta._sentinel import _LRU_MISS
 
 import pytest
 
@@ -403,14 +402,6 @@ def describe_copy_and_composition():
         assert copied.duration == timedelta(hours=1)
         assert copied.path == "original.json"
 
-    def test_copy_preserves_lru():
-        original = Cachetta(path="test.json", lru_size=10)
-        copied = original.copy(write=False)
-        assert copied.lru_size == 10
-        # Copy should get its own LRU
-        assert copied._lru is not None
-
-
 # -- Corrupt cache recovery --
 
 def describe_corrupt_cache_recovery():
@@ -497,50 +488,6 @@ def describe_atomic_writes():
 
             remaining = list(Path(tmpdir).iterdir())
             assert len(remaining) == 0
-
-
-# -- LRU cache behavior --
-
-def describe_lru_integration():
-    def test_lru_serves_from_memory():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "lru.json"
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-
-            write_cache(cache, {"data": "original"})
-
-            # Now corrupt the file on disk
-            cache_path.write_text("corrupted!!!")
-
-            # LRU should still return the original data
-            with read_cache(cache) as result:
-                pass
-            assert result == {"data": "original"}
-
-    def test_lru_ttl_expiry():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "lru-ttl.json"
-            cache = Cachetta(
-                path=str(cache_path),
-                lru_size=10,
-                duration=timedelta(seconds=0),  # Immediately expire
-            )
-
-            cache._lru_set(str(cache_path), {"old": True})
-            # Should be expired immediately
-            assert cache._lru_get(str(cache_path)) is _LRU_MISS
-
-    def test_lru_eviction():
-        cache = Cachetta(path="test.json", lru_size=3)
-        for i in range(5):
-            cache._lru_set(f"key{i}", f"value{i}")
-
-        # Only the last 3 should remain
-        assert cache._lru_get("key0") is _LRU_MISS
-        assert cache._lru_get("key1") is _LRU_MISS
-        assert cache._lru_get("key2") is not _LRU_MISS
-        assert cache._lru_get("key3") is not _LRU_MISS
-        assert cache._lru_get("key4") is not _LRU_MISS
 
 
 # -- read=False, write=False combinations --
@@ -648,10 +595,8 @@ def describe_construction():
         assert cache.write is True
         assert cache.read is True
         assert cache.duration == timedelta(days=7)
-        assert cache.lru_size is None
         assert cache.condition is None
         assert cache.stale_duration is None
-        assert cache._lru is None
 
     def test_all_parameters():
         def cond(r):
@@ -661,17 +606,14 @@ def describe_construction():
             write=False,
             read=False,
             duration=timedelta(minutes=5),
-            lru_size=50,
             condition=cond,
             stale_duration=timedelta(minutes=10),
         )
         assert cache.write is False
         assert cache.read is False
         assert cache.duration == timedelta(minutes=5)
-        assert cache.lru_size == 50
         assert cache.condition is cond
         assert cache.stale_duration == timedelta(minutes=10)
-        assert cache._lru is not None
 
     def test_path_types():
         # String
@@ -936,18 +878,6 @@ def describe_falsy_value_caching():
             assert r1 == []
             assert r2 == []
             assert call_count == 1
-
-    def test_caches_none_via_lru():
-        """None cached in LRU should be distinguishable from LRU miss."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "none_lru.json"
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-
-            # Manually set None in LRU
-            cache._lru_set(str(cache_path), None)
-            result = cache._lru_get(str(cache_path))
-            assert result is None  # Should be actual None, not _LRU_MISS
-
 
 # -- Condition callback edge cases --
 

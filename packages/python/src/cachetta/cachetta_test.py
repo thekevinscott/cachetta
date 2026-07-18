@@ -6,7 +6,6 @@ from unittest.mock import patch, Mock, MagicMock
 import tempfile
 from cachetta.cachetta import Cachetta
 from cachetta.exceptions import CachettaError, InvalidPathError
-from cachetta._sentinel import _LRU_MISS
 from datetime import timedelta
 from time import time
 from typing import Any
@@ -488,35 +487,6 @@ def describe_cache():
             decorator()
 
 
-def describe_lru_cache():
-    def test_get_returns_miss_when_key_absent():
-        cache = Cachetta(path="x", lru_size=2)
-        assert cache._lru_get("absent") is _LRU_MISS
-
-    def test_get_returns_fresh_value():
-        cache = Cachetta(path="x", lru_size=2, duration=timedelta(days=1))
-        cache._lru_set("k", "v")
-        assert cache._lru_get("k") == "v"
-
-    def test_get_evicts_and_misses_when_entry_expired():
-        cache = Cachetta(path="x", lru_size=2, duration=timedelta(seconds=1))
-        lru = cache._lru
-        assert lru is not None
-        lru["k"] = ("v", time() - 10)  # backdate beyond the 1s duration
-        assert cache._lru_get("k") is _LRU_MISS
-        assert "k" not in lru
-
-    def test_set_evicts_oldest_at_capacity():
-        cache = Cachetta(path="x", lru_size=2, duration=timedelta(days=1))
-        cache._lru_set("a", "1")
-        cache._lru_set("b", "2")
-        cache._lru_set("c", "3")  # exceeds capacity -> evict oldest ("a")
-        lru = cache._lru
-        assert lru is not None
-        assert "a" not in lru
-        assert set(lru.keys()) == {"b", "c"}
-
-
 def describe_get_path_literal_with_args():
     def test_returns_literal_path_when_args_provided():
         # Args to the wrapped function no longer rewrite str/Path paths into
@@ -556,19 +526,14 @@ def describe_wrap():
 
 
 def describe_invalidate():
-    def test_deletes_file_and_clears_lru_entry():
-        cache = Cachetta(path="x.json", lru_size=2, duration=timedelta(days=1))
-        key = str(cache._get_path())
-        cache._lru_set(key, "v")
+    def test_deletes_file():
+        cache = Cachetta(path="x.json", duration=timedelta(days=1))
         with patch("cachetta.cachetta.os.unlink") as unlink:
             cache.invalidate()
         unlink.assert_called_once()
-        lru = cache._lru
-        assert lru is not None
-        assert key not in lru
 
-    def test_swallows_missing_file_and_skips_lru_when_disabled():
-        cache = Cachetta(path="x.json")  # no LRU
+    def test_swallows_missing_file():
+        cache = Cachetta(path="x.json")
         with patch("cachetta.cachetta.os.unlink", side_effect=FileNotFoundError):
             cache.invalidate()  # must not raise
 
@@ -638,18 +603,13 @@ def describe_sync_instance_methods():
 
 
 def describe_async_instance_methods():
-    async def test_ainvalidate_deletes_file_and_clears_lru_entry():
-        cache = Cachetta(path="x.json", lru_size=2, duration=timedelta(days=1))
-        key = str(cache._get_path())
-        cache._lru_set(key, "v")
+    async def test_ainvalidate_deletes_file():
+        cache = Cachetta(path="x.json", duration=timedelta(days=1))
         with patch("cachetta.cachetta.os.unlink") as unlink:
             await cache.ainvalidate()
         unlink.assert_called_once()
-        lru = cache._lru
-        assert lru is not None
-        assert key not in lru
 
-    async def test_ainvalidate_swallows_missing_file_without_lru():
+    async def test_ainvalidate_swallows_missing_file():
         cache = Cachetta(path="x.json")
         with patch("cachetta.cachetta.os.unlink", side_effect=FileNotFoundError):
             await cache.ainvalidate()

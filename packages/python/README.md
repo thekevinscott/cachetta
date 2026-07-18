@@ -66,16 +66,6 @@ Pass a callable `path` to vary the cache file by argument. A `str`/`Path` `path`
 
 [→ Per-Argument Cache Files](./docs/python.md#per-argument-cache-files)
 
-## In-Memory LRU
-
-```python
-cache = Cachetta(path='./cache.json', lru_size=100)
-```
-
-Thread-safe for concurrent async access.
-
-[→ In-Memory LRU](./docs/python.md#in-memory-lru)
-
 ## Conditional Caching
 
 ```python
@@ -196,7 +186,6 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 | `path` | `str \| Callable` | required |
 | `read` / `write` | `bool` | `True` |
 | `duration` | `timedelta` | 7 days |
-| `lru_size` | `int` | `None` |
 | `condition` | `Callable` | `None` |
 | `stale_duration` | `timedelta` | `None` |
 | `allowed_pickle_types` | `set[type]` | `None` |

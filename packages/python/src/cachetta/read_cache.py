@@ -2,7 +2,6 @@ import asyncio
 from time import time
 from typing import Any, Generator
 from contextlib import asynccontextmanager, contextmanager
-from ._sentinel import _LRU_MISS
 from .safe_pickle import safe_load, UnsafePickleError
 from .utils import should_use_read_cache, get_last_updated, logger
 
@@ -15,17 +14,11 @@ def read_cache(cache=None, *args, **kwargs) -> Generator[Any, None, None]:
     else:
         cache_path = cache._get_path(*args, **kwargs)
 
-        # Check in-memory LRU before hitting disk
-        lru_result = cache._lru_get(str(cache_path))
-        if lru_result is not _LRU_MISS:
-            logger.debug("LRU cache hit for %s", cache_path)
-            yield lru_result
-        elif should_use_read_cache(cache, cache_path):
+        if should_use_read_cache(cache, cache_path):
             logger.debug("Using cache at %s", cache_path)
             try:
                 with open(cache_path, "rb") as f:
                     data = safe_load(f, cache.allowed_pickle_types)
-                cache._lru_set(str(cache_path), data)
                 yield data
                 logger.debug("Used cache at %s", cache_path)
             except FileNotFoundError:
@@ -85,7 +78,6 @@ def _blocking_read_impl(cache, cache_path):
     try:
         with open(cache_path, "rb") as f:
             data = safe_load(f, cache.allowed_pickle_types)
-        cache._lru_set(str(cache_path), data)
         return data
     except FileNotFoundError:
         logger.debug("cache at %s does not exist", cache_path)
@@ -100,8 +92,8 @@ def _blocking_read_impl(cache, cache_path):
 
 @asynccontextmanager
 async def async_read_cache(cache=None, *args, **kwargs):
-    """Async version of read_cache. LRU check is synchronous (fast),
-    blocking disk I/O is delegated to asyncio.to_thread().
+    """Async version of read_cache. Blocking disk I/O is delegated to
+    asyncio.to_thread().
     """
     if cache is None:
         logger.debug("cache is null")
@@ -109,12 +101,7 @@ async def async_read_cache(cache=None, *args, **kwargs):
     else:
         cache_path = cache._get_path(*args, **kwargs)
 
-        # Check in-memory LRU before hitting disk (synchronous, fast)
-        lru_result = cache._lru_get(str(cache_path))
-        if lru_result is not _LRU_MISS:
-            logger.debug("LRU cache hit for %s", cache_path)
-            yield lru_result
-        elif should_use_read_cache(cache, cache_path):
+        if should_use_read_cache(cache, cache_path):
             data = await asyncio.to_thread(_blocking_read_impl, cache, cache_path)
             yield data
         else:

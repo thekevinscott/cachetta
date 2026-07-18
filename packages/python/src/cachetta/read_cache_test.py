@@ -149,15 +149,6 @@ def describe_read_cache():
                     pass
             assert d is None
 
-    def test_it_yields_lru_hit_without_disk():
-        cache = MockCache(path="foo", lru_size=10)
-        cache._lru_set("does-not-matter", "sentinel-value")
-        # Override _get_path to return the LRU key
-        with patch.object(cache, "_get_path", return_value="does-not-matter"):
-            with read_cache(cache) as d:
-                pass
-        assert d == "sentinel-value"
-
 
 class _Unsafe:
     """A type that is not in the pickle allowlist."""
@@ -258,14 +249,6 @@ def describe_async_read_cache():
     async def test_it_yields_none_when_cache_is_none():
         async with async_read_cache(None) as d:
             assert d is None
-
-    async def test_it_yields_lru_hit():
-        cache = MockCache(path="foo", lru_size=10)
-        cache._lru_set("k", "lru-value")
-        with patch.object(cache, "_get_path", return_value="k"):
-            async with async_read_cache(cache) as d:
-                pass
-        assert d == "lru-value"
 
     async def test_it_yields_data_via_thread():
         with tempfile.TemporaryDirectory() as tmpdir:

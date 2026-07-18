@@ -12,6 +12,9 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 - The `skip_self` flag — the receiver (`self`/`cls`) is now excluded from
   the cache key automatically. Drop `skip_self=`; see
   [MIGRATIONS.md](./MIGRATIONS.md). (#77)
+- The in-memory LRU layer, including the `lru_size` constructor option.
+  Passing `lru_size` now raises `TypeError`. See
+  [MIGRATIONS.md](./MIGRATIONS.md). (Part of #98)
 
 ### Added
 - New `hashed: bool = False` field on `Cachetta`. When set, arg-bearing

@@ -1,10 +1,8 @@
 import asyncio
 import pickle
 import tempfile
-from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
-from cachetta._sentinel import _LRU_MISS
 
 import pytest
 
@@ -28,123 +26,6 @@ def clear_in_flight():
     _in_flight.clear()
     yield
     _in_flight.clear()
-
-
-def describe_lru_cache():
-    def test_lru_size_creates_lru_dict():
-        cache = Cachetta(path="test.json", lru_size=10)
-        assert cache._lru is not None
-        assert len(cache._lru) == 0
-
-    def test_no_lru_size_leaves_lru_none():
-        cache = Cachetta(path="test.json")
-        assert cache._lru is None
-
-    def test_lru_get_returns_miss_when_disabled():
-        cache = Cachetta(path="test.json")
-        assert cache._lru_get("key") is _LRU_MISS
-
-    def test_lru_set_is_noop_when_disabled():
-        cache = Cachetta(path="test.json")
-        cache._lru_set("key", "value")
-        assert cache._lru is None
-
-    def test_lru_set_and_get():
-        cache = Cachetta(path="test.json", lru_size=10)
-        cache._lru_set("key1", {"data": "hello"})
-        result = cache._lru_get("key1")
-        assert result == {"data": "hello"}
-
-    def test_lru_evicts_oldest_when_full():
-        cache = Cachetta(path="test.json", lru_size=2)
-        cache._lru_set("key1", "value1")
-        cache._lru_set("key2", "value2")
-        cache._lru_set("key3", "value3")
-
-        assert cache._lru_get("key1") is _LRU_MISS
-        assert cache._lru_get("key2") == "value2"
-        assert cache._lru_get("key3") == "value3"
-
-    def test_lru_moves_accessed_to_end():
-        cache = Cachetta(path="test.json", lru_size=2)
-        cache._lru_set("key1", "value1")
-        cache._lru_set("key2", "value2")
-
-        # Access key1 to move it to end
-        cache._lru_get("key1")
-
-        # Add key3, which should evict key2 (oldest), not key1
-        cache._lru_set("key3", "value3")
-
-        assert cache._lru_get("key1") == "value1"
-        assert cache._lru_get("key2") is _LRU_MISS
-        assert cache._lru_get("key3") == "value3"
-
-    def test_lru_expires_entries():
-        cache = Cachetta(path="test.json", lru_size=10, duration=timedelta(seconds=0))
-        cache._lru_set("key1", "value1")
-        # Duration is 0, so entry should be expired immediately
-        assert cache._lru_get("key1") is _LRU_MISS
-
-    def test_lru_does_not_evict_when_updating_existing_key():
-        cache = Cachetta(path="test.json", lru_size=2)
-        cache._lru_set("key1", "value1")
-        cache._lru_set("key2", "value2")
-        # Update existing key1, should not evict
-        cache._lru_set("key1", "value1-updated")
-
-        assert cache._lru_get("key1") == "value1-updated"
-        assert cache._lru_get("key2") == "value2"
-
-
-def describe_lru_integration_with_read_cache():
-    def test_read_cache_returns_lru_hit(self=None):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-
-            # Pre-populate LRU
-            cache._lru_set(str(cache_path), {"from": "lru"})
-
-            with read_cache(cache) as data:
-                pass
-            assert data == {"from": "lru"}
-
-    def test_read_cache_populates_lru_from_disk():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.dat"
-            with open(cache_path, "wb") as f:
-                pickle.dump({"from": "disk"}, f)
-
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-
-            # First read should come from disk and populate LRU
-            with read_cache(cache) as data:
-                pass
-            assert data == {"from": "disk"}
-
-            # Verify LRU is now populated
-            assert cache._lru_get(str(cache_path)) == {"from": "disk"}
-
-
-def describe_lru_integration_with_write_cache():
-    def test_write_cache_populates_lru():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-
-            write_cache(cache, {"written": True})
-
-            assert cache._lru_get(str(cache_path)) == {"written": True}
-
-    def test_write_cache_does_not_populate_lru_when_disabled():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache = Cachetta(path=str(cache_path))
-
-            write_cache(cache, {"written": True})
-
-            assert cache._lru is None
 
 
 def describe_directory_caching():

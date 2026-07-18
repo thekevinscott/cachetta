@@ -37,8 +37,6 @@ def write_cache(cache, data: Any, *args, **kwargs) -> None:
             with os.fdopen(fd, "wb") as f:
                 pickle.dump(data, f)
             os.replace(tmp_path, cache_path)
-            # Populate LRU on successful write
-            cache._lru_set(str(cache_path), data)
         except BaseException:
             try:
                 os.unlink(tmp_path)

@@ -50,8 +50,8 @@ helper — no extension by default.
 (`self`/`cls`) is automatically excluded from the hash, so every instance shares
 the same cache files, keyed only by the real arguments.
 
-`hashed` also composes with `condition`, `stale_duration`, async functions, and
-the LRU.
+`hashed` also composes with `condition`, `stale_duration`, and async
+functions.
 
 → Full API: [Python reference](../../python.md) · Back to
 [Python recipes](./index.md)
