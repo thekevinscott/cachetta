@@ -6,8 +6,53 @@ from ..read_cache import read_cache, read_stale_cache, async_read_cache, async_r
 from ..write_cache import write_cache, async_write_cache
 from .logger import logger
 
-# In-flight asyncio task deduplication keyed by resolved cache path
-_in_flight: dict[str, asyncio.Task] = {}
+# In-flight asyncio task deduplication.
+#
+# Keyed by (id(event loop), fn identity, resolved cache path) so that:
+#   - two decorated functions (or two Cachetta instances) that happen to
+#     resolve to the same cache path never dedupe against each other -- the
+#     fn identity component distinguishes them;
+#   - tasks scheduled on one event loop are never awaited/shielded from a
+#     different loop, which would raise ``RuntimeError`` (asyncio tasks and
+#     locks are bound to the loop that created them).
+_InFlightKey = tuple[int, tuple[int, int], str]
+_in_flight: dict[_InFlightKey, asyncio.Task] = {}
+
+# One lock per event loop, guarding the check-then-register critical section
+# for that loop so concurrent coroutines on the same loop can't both observe
+# "no in-flight task" and both schedule work. asyncio.Lock is itself
+# loop-bound (post 3.10), so it can't be shared across loops either.
+_locks: dict[int, asyncio.Lock] = {}
+
+
+def _get_lock(loop_id: int) -> asyncio.Lock:
+    lock = _locks.get(loop_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _locks[loop_id] = lock
+    return lock
+
+
+def _pop_if_current(key: _InFlightKey, task: asyncio.Task) -> None:
+    """Remove ``key`` from the registry only if it still points at ``task``.
+
+    Guards against a done-callback from a stale/superseded task clobbering a
+    newer task that has since claimed the same key.
+    """
+    if _in_flight.get(key) is task:
+        _in_flight.pop(key, None)
+
+
+def _fn_identity(fn: Callable) -> tuple[int, int]:
+    """Stable identity for the decorated callable.
+
+    For a bound method, ``fn`` is a fresh ``MethodType`` on every descriptor
+    access (see ``_Cached.__get__``), so ``id(fn)`` itself is not stable.
+    ``__func__``/``__self__`` are stable across those accesses, so use those
+    when present; a plain function has neither, so ``fn`` and ``None`` are
+    used directly.
+    """
+    return (id(getattr(fn, "__func__", fn)), id(getattr(fn, "__self__", None)))
 
 
 def _should_cache(cache, result) -> bool:
@@ -23,6 +68,7 @@ def _build(cache, fn: Callable) -> Callable:
     fn_name = getattr(fn, "__name__", repr(fn))
     if asyncio.iscoroutinefunction(fn):
         logger.debug("Decorating async function %s", fn_name)
+        fn_identity = _fn_identity(fn)
 
         @wraps(fn)
         async def async_wrapper(*args, **kwargs):
@@ -34,49 +80,58 @@ def _build(cache, fn: Callable) -> Callable:
                     return data
 
                 cache_key = str(cache._get_path(*args, **kwargs))
+                loop_id = id(asyncio.get_running_loop())
+                key: _InFlightKey = (loop_id, fn_identity, cache_key)
+                lock = _get_lock(loop_id)
 
                 # Stale-while-revalidate: return stale data and refresh in background
                 if cache.stale_duration:
                     stale_data = await async_read_stale_cache(cache, *args, **kwargs)
                     if stale_data is not None:
-                        if cache_key not in _in_flight:
-                            async def _bg_refresh():
-                                try:
-                                    result = await fn(*args, **kwargs)
-                                    if _should_cache(cache, result):
-                                        await async_write_cache(cache, result, *args, **kwargs)
-                                except Exception as e:
-                                    logger.error("Background revalidation failed for %s: %s", cache_key, e)
+                        async with lock:
+                            if key not in _in_flight:
+                                async def _bg_refresh():
+                                    try:
+                                        result = await fn(*args, **kwargs)
+                                        if _should_cache(cache, result):
+                                            await async_write_cache(cache, result, *args, **kwargs)
+                                    except Exception as e:
+                                        logger.error("Background revalidation failed for %s: %s", cache_key, e)
 
-                            task = asyncio.ensure_future(_bg_refresh())
-                            _in_flight[cache_key] = task
-                            task.add_done_callback(lambda _: _in_flight.pop(cache_key, None))
+                                task = asyncio.ensure_future(_bg_refresh())
+                                _in_flight[key] = task
+                                task.add_done_callback(lambda t, k=key: _pop_if_current(k, t))
                         return stale_data
 
-                # If there's already an in-flight call for this path, await it
-                existing = _in_flight.get(cache_key)
-                if existing is not None and not existing.done():
+                # If there's already an in-flight call for this key, await it.
+                # The check and the registration of a new task both happen
+                # while holding `lock`, so no other coroutine on this loop can
+                # observe a gap between "no in-flight task" and "task
+                # registered" -- closing the check-then-act race.
+                async with lock:
+                    existing = _in_flight.get(key)
+                    if existing is not None and not existing.done():
+                        task = existing
+                    else:
+                        async def _execute():
+                            try:
+                                result = await fn(*args, **kwargs)
+                                logger.debug("Executed async function %s, writing data to %s", fn_name, cache.path)
+                                if _should_cache(cache, result):
+                                    await async_write_cache(cache, result, *args, **kwargs)
+                                    logger.debug("Wrote data for %s to %s", fn_name, cache.path)
+                                return result
+                            except Exception as e:
+                                logger.error("Error executing async function %s: %s", fn_name, e)
+                                raise
+
+                        task = asyncio.ensure_future(_execute())
+                        _in_flight[key] = task
+                        task.add_done_callback(lambda t, k=key: _pop_if_current(k, t))
+
+                if task is existing:
                     logger.debug("Deduplicating call for %s", cache_key)
-                    return await asyncio.shield(existing)
-
-                async def _execute():
-                    try:
-                        result = await fn(*args, **kwargs)
-                        logger.debug("Executed async function %s, writing data to %s", fn_name, cache.path)
-                        if _should_cache(cache, result):
-                            await async_write_cache(cache, result, *args, **kwargs)
-                            logger.debug("Wrote data for %s to %s", fn_name, cache.path)
-                        return result
-                    except Exception as e:
-                        logger.error("Error executing async function %s: %s", fn_name, e)
-                        raise
-
-                task = asyncio.ensure_future(_execute())
-                _in_flight[cache_key] = task
-                try:
-                    return await task
-                finally:
-                    _in_flight.pop(cache_key, None)
+                return await asyncio.shield(task)
 
         return async_wrapper
     else:

@@ -8,6 +8,15 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Fixed
+- In-flight async call deduplication no longer collides across unrelated
+  decorated functions/`Cachetta` instances that happen to resolve to the
+  same cache path, and no longer crashes with `RuntimeError` when a call
+  left in-flight on one event loop is looked up again from a different
+  (e.g. newly created) loop. The dedup registry is now keyed per
+  function/instance identity and per event loop, with the check-then-
+  register step made atomic within a loop. (#80)
+
 ### Removed
 - The `skip_self` flag — the receiver (`self`/`cls`) is now excluded from
   the cache key automatically. Drop `skip_self=`; see
