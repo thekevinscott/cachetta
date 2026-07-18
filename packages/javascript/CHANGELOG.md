@@ -39,6 +39,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   subdirectory was silently dropped. (#56)
 
 ### Removed
+- **Breaking:** Removed `InvalidPathError` and the `..`-segment check in
+  cache path resolution. The check only rejected literal `..` segments —
+  absolute paths and symlinks passed through untouched — so it provided
+  no real traversal protection while the error message implied one.
+  `path` (literal or `PathFn`) is now documented as trusted developer
+  input, used exactly as given; see "Path Contract" in `docs/javascript.md`.
+  Do not build cache paths from untrusted data. (#86)
 - **Breaking:** Removed the in-memory LRU layer and the `lruSize` config
   option. The LRU shipped in the initial import with no design rationale,
   the library's sole consumer never used it, and issues #79/#82/#83

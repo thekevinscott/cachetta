@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   CachettaError,
-  InvalidPathError,
 } from './errors.js';
 
 describe('errors', () => {
@@ -11,12 +10,5 @@ describe('errors', () => {
     expect(err).toBeInstanceOf(CachettaError);
     expect(err.name).toBe('CachettaError');
     expect(err.message).toBe('test');
-  });
-
-  it('InvalidPathError', () => {
-    const err = new InvalidPathError('../etc/passwd');
-    expect(err).toBeInstanceOf(CachettaError);
-    expect(err.name).toBe('InvalidPathError');
-    expect(err.message).toContain('path traversal');
   });
 });

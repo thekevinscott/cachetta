@@ -124,6 +124,13 @@ const newCache = cache.copy({ read: false, duration: 2 * 24 * 60 * 60 * 1000 });
 
 [→ Specifying Paths](./docs/javascript.md#specifying-paths)
 
+## Path Contract
+
+`path` is trusted input, used exactly as given — no sandboxing, no traversal
+checks. Never derive it from untrusted data.
+
+[→ Path Contract](./docs/javascript.md#path-contract)
+
 ## Error Handling
 
 `readCache` returns `null` for missing or corrupt files.

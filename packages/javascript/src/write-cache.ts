@@ -3,7 +3,6 @@ import { promises as fs, mkdirSync, writeFileSync, renameSync, unlinkSync } from
 import { dirname, join, resolve } from 'path';
 import { randomBytes } from 'crypto';
 import { serialize } from 'v8';
-import { validateCachePath } from './utils/validate-cache-path.js';
 
 // Track directories already created in this process to skip redundant mkdir calls.
 // Growth is bounded by the number of unique cache directories, which in practice is small.
@@ -16,7 +15,6 @@ export async function writeCache<T>(cache: Cachetta<any>, data: T, ...args: unkn
   }
 
   const cachePath = cache._getPath(...args);
-  validateCachePath(cachePath);
 
   // Ensure directory exists (skip if already created in this process)
   const dir = resolve(dirname(cachePath));
@@ -44,7 +42,6 @@ export function writeCacheSync<T>(cache: Cachetta<any>, data: T, ...args: unknow
   }
 
   const cachePath = cache._getPath(...args);
-  validateCachePath(cachePath);
 
   const dir = resolve(dirname(cachePath));
   if (!createdDirs.has(dir)) {

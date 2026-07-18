@@ -322,6 +322,21 @@ const newCache = cache.copy({
 });
 ```
 
+## Path Contract
+
+`path` (whether a literal string or a `PathFn`) is used exactly as given —
+resolved, then read, written, or unlinked. Cachetta does not sandbox, canonicalize
+symlinks, or reject absolute paths or `..` segments; it trusts the path as
+developer-supplied configuration.
+
+**Never build a `path` (or the arguments passed to a `PathFn`) from untrusted
+input** — user-controlled strings, request bodies, etc. A path derived from
+untrusted data is a write/delete-anywhere primitive: cachetta will read,
+overwrite, or `unlink` whatever the resolved path points to, including outside
+the intended cache directory. Keep paths static, derived from trusted
+application state (config, internal IDs), or hashed via the built-in
+[`hash`](#public-hash-helper) helper.
+
 ## Error Handling
 
 Cachetta gracefully handles corrupt cache files by returning `null`:

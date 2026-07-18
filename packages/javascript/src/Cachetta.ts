@@ -2,7 +2,6 @@ import type { CacheConfig, CacheInfo, CachableFunction, CachableFunctionSync, Pa
 import { isPartialCacheConfig } from './type-guards.js';
 import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
-import { validateCachePath } from './utils/validate-cache-path.js';
 import { promises as fs, unlinkSync } from 'fs';
 import { join } from 'path';
 import { inspect } from 'util';
@@ -81,7 +80,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   async invalidate(...args: unknown[]): Promise<void> {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     try {
       await fs.unlink(cachePath);
     } catch (error) {
@@ -93,7 +91,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   invalidateSync(...args: unknown[]): void {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     try {
       unlinkSync(cachePath);
     } catch (error) {
@@ -105,20 +102,17 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   async exists(...args: unknown[]): Promise<boolean> {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     const mtime = await getLastUpdated(cachePath);
     return mtime !== null;
   }
 
   existsSync(...args: unknown[]): boolean {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     return getLastUpdatedSync(cachePath) !== null;
   }
 
   async age(...args: unknown[]): Promise<number | null> {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     const mtime = await getLastUpdated(cachePath);
     if (mtime === null) return null;
     return Math.max(0, Date.now() - mtime);
@@ -126,7 +120,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   ageSync(...args: unknown[]): number | null {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     const mtime = getLastUpdatedSync(cachePath);
     if (mtime === null) return null;
     return Math.max(0, Date.now() - mtime);
@@ -134,7 +127,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   async info(...args: unknown[]): Promise<CacheInfo> {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     const mtime = await getLastUpdated(cachePath);
     if (mtime === null) {
       return { exists: false, age: null, expired: false, stale: false, path: cachePath };
@@ -147,7 +139,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   infoSync(...args: unknown[]): CacheInfo {
     const cachePath = this._getPath(...args);
-    validateCachePath(cachePath);
     const mtime = getLastUpdatedSync(cachePath);
     if (mtime === null) {
       return { exists: false, age: null, expired: false, stale: false, path: cachePath };

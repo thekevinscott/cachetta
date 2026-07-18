@@ -4,10 +4,3 @@ export class CachettaError extends Error {
     this.name = 'CachettaError';
   }
 }
-
-export class InvalidPathError extends CachettaError {
-  constructor(cachePath: string) {
-    super(`Invalid cache path (path traversal detected): ${cachePath}`);
-    this.name = 'InvalidPathError';
-  }
-}

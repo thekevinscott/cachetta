@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs, renameSync as realRenameSync, unlinkSync as realUnlinkSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { deserialize } from 'v8';
 import { writeCache, writeCacheSync } from './write-cache.js';
 import { Cachetta } from './Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta config object used as a plain-data fixture
-import { InvalidPathError } from './errors.js';
 import type * as _fs from 'fs';
 
 // Wrap the sync fs primitives in spies so individual tests can force failures
@@ -104,13 +104,17 @@ describe('writeCache', () => {
     }
   });
 
-  it('should reject paths with traversal segments', async () => {
-    const cache = new Cachetta({
-      path: '../etc/evil.json',
-      write: true
-    });
-
-    await expect(writeCache(cache, { key: 'value' })).rejects.toThrow(InvalidPathError);
+  it('should write to an absolute path outside the CWD', async () => {
+    const outsideDir = await fs.mkdtemp(join(tmpdir(), 'cachetta-outside-'));
+    try {
+      const cachePath = join(outsideDir, 'test-cache.json');
+      const cache = new Cachetta({ path: cachePath, write: true });
+      await writeCache(cache, { key: 'value' });
+      const buffer = await fs.readFile(cachePath);
+      expect(deserialize(buffer)).toEqual({ key: 'value' });
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
   });
 
   it('should write atomically (no partial files on crash)', async () => {
@@ -221,9 +225,17 @@ describe('writeCacheSync', () => {
     await expect(fs.readFile(cachePath)).rejects.toThrow();
   });
 
-  it('should reject paths with traversal segments', () => {
-    const cache = new Cachetta({ path: '../etc/evil.json', write: true });
-    expect(() => writeCacheSync(cache, { key: 'value' })).toThrow(InvalidPathError);
+  it('should write to an absolute path outside the CWD (sync)', async () => {
+    const outsideDir = await fs.mkdtemp(join(tmpdir(), 'cachetta-outside-sync-'));
+    try {
+      const cachePath = join(outsideDir, 'test-cache.json');
+      const cache = new Cachetta({ path: cachePath, write: true });
+      writeCacheSync(cache, { key: 'value' });
+      const buffer = await fs.readFile(cachePath);
+      expect(deserialize(buffer)).toEqual({ key: 'value' });
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
   });
 
   it('should clean up the temp file and rethrow when the rename fails', async () => {

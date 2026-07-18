@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { serialize } from 'v8';
 import { readCache, readCacheSync, readStaleCache, readStaleCacheSync } from './read-cache.js';
 import { writeCache, writeCacheSync } from './write-cache.js'; // eslint-disable-line mock-isolation/collaborators -- real writeCache seeds on-disk cache fixtures for the read path
 import { Cachetta } from './Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta config object used as a plain-data fixture
-import { CachettaError, InvalidPathError } from './errors.js';
+import { CachettaError } from './errors.js';
 import * as shouldUseReadCacheModule from './utils/should-use-read-cache.js'; // eslint-disable-line mock-isolation/collaborators -- namespace import spied via vi.spyOn rather than vi.mock
 import * as getLastUpdatedModule from './utils/get-last-updated.js'; // eslint-disable-line mock-isolation/collaborators -- namespace import spied via vi.spyOn rather than vi.mock
 
@@ -109,10 +110,19 @@ describe('readCache', () => {
     expect(result).toEqual(testData);
   });
 
-  it('should reject paths with traversal segments', async () => {
-    const cache = new Cachetta({ path: '../etc/passwd', read: true });
+  it('should read from an absolute path outside the CWD', async () => {
+    const outsideDir = await fs.mkdtemp(join(tmpdir(), 'cachetta-outside-read-'));
+    try {
+      const cachePath = join(outsideDir, 'test-cache.json');
+      const cache = new Cachetta({ path: cachePath, read: true });
+      const testData = { key: 'value', number: 42 };
+      await fs.writeFile(cachePath, serialize(testData));
 
-    await expect(readCache(cache)).rejects.toThrow(InvalidPathError);
+      const result = await readCache(cache);
+      expect(result).toEqual(testData);
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
   });
 
   it('should return null when the file vanishes after the freshness check (ENOENT in readCacheFile)', async () => {
@@ -162,9 +172,16 @@ describe('readCacheSync', () => {
     expect(() => readCacheSync(null as any)).toThrow(CachettaError);
   });
 
-  it('should reject paths with traversal segments', () => {
-    const cache = new Cachetta({ path: '../etc/passwd' });
-    expect(() => readCacheSync(cache)).toThrow(InvalidPathError);
+  it('should read from an absolute path outside the CWD (sync)', async () => {
+    const outsideDir = await fs.mkdtemp(join(tmpdir(), 'cachetta-outside-read-sync-'));
+    try {
+      const cachePath = join(outsideDir, 'test-cache.json');
+      const cache = new Cachetta({ path: cachePath });
+      await fs.writeFile(cachePath, serialize({ sync: true }));
+      expect(readCacheSync(cache)).toEqual({ sync: true });
+    } finally {
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
   });
 
   it('should return null when the file vanishes after the freshness check (ENOENT in readCacheFileSync)', () => {

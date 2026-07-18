@@ -4,7 +4,6 @@ import { promises as fs, readFileSync } from 'fs';
 import { deserialize } from 'v8';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
 import { shouldUseReadCache, shouldUseReadCacheSync } from './utils/should-use-read-cache.js';
-import { validateCachePath } from './utils/validate-cache-path.js';
 import { logger } from './utils/logger.js';
 import { isCachetta } from './type-guards.js';
 import { CachettaError } from './errors.js';
@@ -50,7 +49,6 @@ export async function readCacheOrMiss<T>(cacheBuddy: Cachetta<any>, ...args: unk
   }
 
   const cachePath = cacheBuddy._getPath(...args);
-  validateCachePath(cachePath);
 
   if (await shouldUseReadCache(cacheBuddy, cachePath)) {
     logger.debug(`Using cache at ${cachePath}`);
@@ -72,7 +70,6 @@ export function readCacheSyncOrMiss<T>(cacheBuddy: Cachetta<any>, ...args: unkno
   }
 
   const cachePath = cacheBuddy._getPath(...args);
-  validateCachePath(cachePath);
 
   if (shouldUseReadCacheSync(cacheBuddy, cachePath)) {
     logger.debug(`Using cache at ${cachePath}`);
@@ -106,7 +103,6 @@ export async function readStaleCache<T>(cacheBuddy: Cachetta<any>, ...args: unkn
   if (!cacheBuddy.staleDuration || !cacheBuddy.read) return null;
 
   const cachePath = cacheBuddy._getPath(...args);
-  validateCachePath(cachePath);
 
   const mtime = await getLastUpdated(cachePath);
   if (mtime === null) return null;
@@ -129,7 +125,6 @@ export function readStaleCacheSync<T>(cacheBuddy: Cachetta<any>, ...args: unknow
   if (!cacheBuddy.staleDuration || !cacheBuddy.read) return null;
 
   const cachePath = cacheBuddy._getPath(...args);
-  validateCachePath(cachePath);
 
   const mtime = getLastUpdatedSync(cachePath);
   if (mtime === null) return null;
