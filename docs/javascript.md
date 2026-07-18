@@ -196,7 +196,7 @@ await callLLM('gpt', 'hi');      // ./cache/gpt/<hash('gpt', 'hi')>
 await callLLM('claude', 'hi');   // ./cache/claude/<hash('claude', 'hi')>
 ```
 
-`hashed` composes with `condition` and the LRU.
+`hashed` composes with `condition`.
 
 ### Public `hash` helper
 
@@ -216,19 +216,6 @@ const callLLM = cache(async (model, prompt, opts) => callApi(model, prompt, opts
 
 {: .warning }
 > The JS and Python `hash` exports are **not** cross-language portable. They use different stringifiers (`JSON.stringify` vs `json.dumps(..., default=str)`) and the Python variant also folds in `**kwargs`, so the same logical input produces different digests in each language. Use each language's `hash` only to align with that language's own cachetta.
-
-## In-Memory LRU
-
-Add an in-memory LRU layer that is checked before hitting disk:
-
-```javascript
-const cache = new Cachetta({
-  path: './cache.json',
-  lruSize: 100,
-});
-```
-
-LRU entries respect the same `duration` as disk entries and use lazy expiration.
 
 ## Conditional Caching
 
@@ -376,6 +363,5 @@ setLogger({
 | `read` | `boolean` | `true` | Allow reading from cache |
 | `write` | `boolean` | `true` | Allow writing to cache |
 | `duration` | `number` | 7 days (ms) | Cache TTL in milliseconds |
-| `lruSize` | `number` | undefined | Max in-memory LRU entries |
 | `condition` | `Function` | undefined | Predicate to decide whether to cache |
 | `staleDuration` | `number` | undefined | Time past expiry to serve stale data |

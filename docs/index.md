@@ -70,7 +70,6 @@ Cachetta uses native binary serialization in both languages -- **pickle** in Pyt
 | Decorator / function wrapper | Yes | Yes |
 | Sync API | Yes | Yes |
 | Async API | Yes (always) | Yes (separate primitives) |
-| In-memory LRU layer | Yes | No |
 | Stale-while-revalidate | Yes | Yes |
 | Conditional caching | Yes | Yes |
 | Auto cache keys (arg hashing) | Yes | Yes |

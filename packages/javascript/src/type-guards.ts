@@ -8,7 +8,6 @@ export const isPartialCacheConfig = (value: unknown): value is Partial<CacheConf
   'write' in value ||
   'read' in value ||
   'duration' in value ||
-  'lruSize' in value ||
   'condition' in value ||
   'staleDuration' in value ||
   'hashed' in value

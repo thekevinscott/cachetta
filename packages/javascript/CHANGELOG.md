@@ -39,6 +39,14 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   subdirectory was silently dropped. (#56)
 
 ### Removed
+- **Breaking:** Removed the in-memory LRU layer and the `lruSize` config
+  option. The LRU shipped in the initial import with no design rationale,
+  the library's sole consumer never used it, and issues #79/#82/#83
+  documented broken eviction/expiry behavior — rather than patch a feature
+  nobody relies on, it's been removed outright. `Cachetta` instances no
+  longer hold an in-memory cache; every read goes to disk. `lruSize` is
+  now rejected at compile time (TypeScript) and silently ignored at
+  runtime. See `MIGRATIONS.md` for details. Part of #98.
 - **Breaking:** Stopped rewriting string `path` into a `{name}-{hash}{ext}`
   sibling when the wrapped function is called with arguments. A string
   `path` is now used verbatim — arguments to the wrapped function no

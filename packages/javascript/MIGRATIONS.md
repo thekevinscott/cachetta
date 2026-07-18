@@ -28,6 +28,50 @@ One paragraph: what broke and why.
   snippet below.
 -->
 
+## v0.4 → v0.5
+
+### Summary
+The in-memory LRU layer has been removed, along with the `lruSize` config
+option. It arrived in the initial code import with no design rationale,
+the library's sole consumer never enabled it, and issues #79/#82/#83
+tracked broken eviction and expiry behavior. Rather than fix a feature
+nobody uses, it's gone. `Cachetta` now has no in-memory cache; every read
+(`readCache`/`readCacheSync`, and reads inside wrapped functions) hits
+disk directly. Write paths no longer populate any in-process cache.
+
+### Required changes
+| Before | After |
+|--------|-------|
+| `new Cachetta({ path: 'cache.json', lruSize: 100 })` | `new Cachetta({ path: 'cache.json' })` |
+| `cache.copy({ lruSize: 50 })` | `cache.copy({})` |
+
+If you relied on the LRU purely as a performance optimization to avoid
+disk reads, and you need that back, add your own memoization layer in
+front of the wrapped function — cachetta no longer provides one.
+
+### Deprecations removed
+None. `lruSize` was not deprecated before this removal.
+
+### Behavior changes without code changes
+- Every cache read now touches disk, even for repeated reads of the same
+  key in quick succession. If `lruSize` was previously set, expect more
+  filesystem I/O and slightly higher read latency; disk-level caching
+  (OS page cache) still applies.
+- `lruSize` in a config object passed to `new Cachetta(...)` or
+  `cache.copy(...)` is now silently ignored at runtime (TypeScript
+  rejects it at compile time via the `CacheConfig` type).
+
+### Verification
+- After upgrading, run:
+  ```ts
+  import { Cachetta } from 'cachetta';
+  const cache = new Cachetta({ path: '/tmp/cachetta_lru_check.json' });
+  console.assert(!('_lru' in cache), 'expected no in-memory LRU state');
+  console.assert(!('lruSize' in cache), 'expected no lruSize property');
+  ```
+  Both assertions should hold. Pre-upgrade, `cache._lru` and
+  `cache.lruSize` were defined properties on every instance.
+
 ## v0.3 → v0.4
 
 ### Summary

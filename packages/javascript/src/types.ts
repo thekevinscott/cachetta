@@ -3,7 +3,6 @@ export interface CacheConfig<Path extends string | PathFn<any> = string> {
   write?: boolean;
   read?: boolean;
   duration?: number;
-  lruSize?: number;
   /** Function that decides whether to cache a result. Return true to cache, false to skip. */
   condition?: (result: unknown) => boolean;
   /** Duration in ms after `duration` expires during which stale data is returned while a background refresh runs. */

@@ -53,7 +53,7 @@ helper — bare, no extension by default.
 instances share the same cache files automatically. (Python behaves the same
 way — the receiver is auto-excluded there too.)
 
-`hashed` also composes with `condition` and the LRU.
+`hashed` also composes with `condition`.
 
 → Full API: [TypeScript reference](../../javascript.md) · Back to
 [JavaScript recipes](./index.md)

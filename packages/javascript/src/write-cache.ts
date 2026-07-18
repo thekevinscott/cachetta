@@ -31,8 +31,6 @@ export async function writeCache<T>(cache: Cachetta<any>, data: T, ...args: unkn
   try {
     await fs.writeFile(tmpPath, serialized);
     await fs.rename(tmpPath, cachePath);
-    // Populate LRU on successful write
-    cache._lruSet(cachePath, data);
   } catch (error) {
     // Clean up temp file on failure
     try { await fs.unlink(tmpPath); } catch { /* ignore */ }
@@ -59,7 +57,6 @@ export function writeCacheSync<T>(cache: Cachetta<any>, data: T, ...args: unknow
   try {
     writeFileSync(tmpPath, serialized);
     renameSync(tmpPath, cachePath);
-    cache._lruSet(cachePath, data);
   } catch (error) {
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
     throw error;

@@ -48,5 +48,5 @@ the wrapped function is synchronous.
   a *subset* of the arguments. Use when some args (clients, loggers, knobs like
   `temperature`) shouldn't participate in the cache key.
 
-Full API (LRU, stale-while-revalidate, invalidation, inspection, sync
+Full API (stale-while-revalidate, invalidation, inspection, sync
 variants): [TypeScript reference](../../javascript.md).
