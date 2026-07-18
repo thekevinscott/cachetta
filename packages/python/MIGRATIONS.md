@@ -53,6 +53,17 @@ cache; callers wanting an in-memory layer should add their own (e.g.
 `functools.lru_cache` composed around the decorator, or a process-local
 dict) since the right eviction/TTL semantics are application-specific.
 
+Also in this release, `InvalidPathError` and the `..`-segment check in
+`_get_path` have been removed (#85). The check raised `InvalidPathError`
+claiming "path traversal detected," but it only ever matched a literal
+`..` path segment — an absolute path or a symlink pointing outside the
+intended directory passed through with no error at all. That gave a false
+sense of protection without providing one. Cachetta's sole consumer
+treats cache paths as developer-authored configuration, not attacker-
+controlled input, so the maintainer decided to remove the check rather
+than build it out into something that actually confines paths. `path`
+(literal or callable) is now used exactly as given, with no validation.
+
 ### Required changes
 | Before | After |
 |--------|-------|
@@ -60,6 +71,7 @@ dict) since the right eviction/TTL semantics are application-specific.
 | `cache = Cachetta(path=..., skip_self=True)` | `cache = Cachetta(path=...)` |
 | `cache.copy(skip_self=True)` | `cache.copy()` |
 | `cache = Cachetta(path=..., lru_size=100)` | `cache = Cachetta(path=...)`<br>_no in-memory layer; every read hits disk_ |
+| `from cachetta import InvalidPathError`<br>`try: cache._get_path()`<br>`except InvalidPathError: ...` | Remove the import and the `except` clause — the exception no longer exists and `_get_path` no longer raises for path shape. |
 
 ### Deprecations removed
 - The `skip_self` field on `Cachetta` (and the `skip_self=` keyword to its
@@ -68,6 +80,10 @@ dict) since the right eviction/TTL semantics are application-specific.
 - The `lru_size` field on `Cachetta`, the internal `_lru`/`_lru_lock`
   state, and the `_lru_get`/`_lru_set` helpers. Also removed outright,
   with no deprecation warning period.
+- The `InvalidPathError` exception class and its export from
+  `cachetta.exceptions`/`cachetta.__init__`. Removed outright — it was
+  never deprecated. Any `except InvalidPathError` clause is now dead code
+  and will fail at import time.
 
 ### Behavior changes without code changes
 - Decorating an instance/class method now excludes the receiver from the
@@ -82,6 +98,12 @@ dict) since the right eviction/TTL semantics are application-specific.
   have been served from the in-memory LRU. Throughput on tight read loops
   against the same key will drop to disk I/O speed; layer your own
   in-memory cache in front of `Cachetta` if that matters for your workload.
+- `_get_path` no longer raises for a `path` (literal or callable-returned)
+  containing `..` segments, an absolute path, or a symlink — it resolves
+  and returns whatever `path` says, unchanged. Code that relied on the
+  traversal check to reject bad configuration will now silently write to
+  wherever the path points; validate `path` yourself before construction
+  if that matters for your use case.
 
 ### Verification
 - After upgrading, confirm the receiver no longer reaches a callable path:
@@ -109,6 +131,21 @@ dict) since the right eviction/TTL semantics are application-specific.
       raise AssertionError("expected TypeError")
   except TypeError:
       pass  # expected: lru_size is no longer a valid keyword
+  ```
+- Confirm `InvalidPathError` is gone and traversal-shaped paths are used
+  as given:
+  ```python
+  from pathlib import Path
+  from cachetta import Cachetta
+
+  cache = Cachetta(path="foo/../bar.dat")
+  assert cache._get_path() == Path("foo/../bar.dat")  # no longer raises
+
+  try:
+      from cachetta import InvalidPathError
+      raise AssertionError("expected ImportError")
+  except ImportError:
+      pass  # expected: InvalidPathError no longer exists
   ```
 
 ## v0.6 → v0.7

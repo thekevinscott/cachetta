@@ -48,8 +48,9 @@ call_llm('claude', 'hi')                   # .../claude/<hash('hi')>.pkl
 `temperature` (like clients, loggers, or other knobs) is left out of the key.
 
 **On disk:** `~/.cache/my-awesome-library/{model}/{hash(prompt)}.pkl`. The
-callable's return is validated against `..` traversal — paths that escape the
-base raise `InvalidPathError`.
+callable's return is joined onto the base and used as given — cache paths are
+trusted developer input, not validated against traversal (see
+[Path Trust](../../python.md#path-trust)).
 
 **Gotchas:**
 - The callable must be **deterministic** across runs — keying on a timestamp or

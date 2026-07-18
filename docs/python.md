@@ -305,7 +305,7 @@ download('pdf', '2401.12345v1')   # cached at ./cache/pdf/2401.12345v1.pkl
 download('html', 'abc')           # cached at ./cache/html/abc.pkl
 ```
 
-This is the right tool for custom file layouts (kind-routing, id-not-hash filenames, etc.). The callable's return is validated against `..` traversal — paths that try to escape the base folder raise `InvalidPathError`.
+This is the right tool for custom file layouts (kind-routing, id-not-hash filenames, etc.). The callable's return is joined onto the base folder and used as given — see [Path Trust](#path-trust) below.
 
 ## Dynamic Cache Paths
 
@@ -319,6 +319,12 @@ def get_cache_path(n: int):
 def foo(n: int):
     return compute_expensive_value(n)
 ```
+
+## Path Trust
+
+`path` — whether given as a literal string/`Path` or as a callable — is used as given. Cachetta does not validate it: absolute paths, `..` segments, and symlinks are all resolved verbatim, with no traversal check and no confinement to a base directory.
+
+This is deliberate: `path` is developer-authored configuration, not user input. Treat it the same as any other trusted value in your source — **never build a cache path from untrusted or user-supplied data** (e.g. a raw request parameter or upload filename). If you need per-request or per-user variation, derive a safe key yourself (allowlist characters, or hash the untrusted value) before it reaches `path`.
 
 ## Specifying Paths
 
