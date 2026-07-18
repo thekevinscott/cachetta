@@ -217,6 +217,8 @@ cache = Cachetta(
 
 LRU entries respect the same `duration` as disk entries. The LRU is thread-safe for concurrent async access.
 
+`lru_size` is independent of `write`: even with `write=False` (no disk persistence), a set `lru_size` still populates the in-memory LRU, so repeated calls within the same process are served from memory instead of recomputing.
+
 ## Conditional Caching
 
 Cache results only when a condition function returns `True`:

@@ -8,6 +8,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Fixed
+- `lru_size` now populates the in-memory LRU even when `write=False`.
+  Previously, LRU population lived entirely inside the `write`-gated disk
+  write path, so a read-only-from-memory config (`write=False` with
+  `lru_size` set) never got the LRU benefit and recomputed on every call.
+  (#79)
+
 ### Removed
 - The `skip_self` flag — the receiver (`self`/`cls`) is now excluded from
   the cache key automatically. Drop `skip_self=`; see

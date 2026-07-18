@@ -72,6 +72,28 @@ def describe_async_decorated_functions():
             assert r3 == {"key": "x"}
             assert call_count == 2
 
+    async def test_async_lru_serves_from_memory_when_write_false():
+        # Regression test for #79: with write=False, disk persistence is
+        # disabled, but lru_size should still short-circuit recomputation via
+        # the in-memory LRU (async path).
+        with tempfile.TemporaryDirectory() as tmpdir:
+            call_count = 0
+            cache = Cachetta(path=f"{tmpdir}/async-lru-no-write.json", write=False, lru_size=10)
+
+            @cache
+            async def compute():
+                nonlocal call_count
+                call_count += 1
+                return {"result": call_count}
+
+            r1 = await compute()
+            r2 = await compute()
+
+            assert r1 == {"result": 1}
+            assert r2 == {"result": 1}
+            assert call_count == 1  # Second call served from LRU, not recomputed
+            assert not Path(f"{tmpdir}/async-lru-no-write.json").exists()
+
     async def test_async_decorator_does_not_block_event_loop():
         """Verify that the async decorator uses non-blocking I/O by running
         concurrent async tasks that would deadlock if blocking."""

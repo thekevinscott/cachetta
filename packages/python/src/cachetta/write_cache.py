@@ -16,35 +16,45 @@ _created_dirs_lock = threading.Lock()
 
 
 def write_cache(cache, data: Any, *args, **kwargs) -> None:
-    if cache and cache.write:
-        cache_path = cache._get_path(*args, **kwargs)
+    if not cache:
+        return
 
-        # Ensure directory exists (skip if already created in this process)
-        parent = str(cache_path.parent.resolve())
-        with _created_dirs_lock:
-            if parent in _created_dirs:
-                _created_dirs.move_to_end(parent)
-            else:
-                cache_path.parent.mkdir(parents=True, exist_ok=True)
-                _created_dirs[parent] = None
-                if len(_created_dirs) > _CREATED_DIRS_MAX:
-                    _created_dirs.popitem(last=False)
+    if not cache.write:
+        # Disk persistence is disabled, but the in-memory LRU is independent
+        # of it: still populate it so lru_size continues to short-circuit
+        # recomputation. `_lru_set` is a no-op when the LRU itself is disabled.
+        if cache.lru_size:
+            cache._lru_set(str(cache._get_path(*args, **kwargs)), data)
+        return
 
-        fd, tmp_path = tempfile.mkstemp(
-            dir=cache_path.parent, suffix=".tmp"
-        )
+    cache_path = cache._get_path(*args, **kwargs)
+
+    # Ensure directory exists (skip if already created in this process)
+    parent = str(cache_path.parent.resolve())
+    with _created_dirs_lock:
+        if parent in _created_dirs:
+            _created_dirs.move_to_end(parent)
+        else:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            _created_dirs[parent] = None
+            if len(_created_dirs) > _CREATED_DIRS_MAX:
+                _created_dirs.popitem(last=False)
+
+    fd, tmp_path = tempfile.mkstemp(
+        dir=cache_path.parent, suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "wb") as f:
+            pickle.dump(data, f)
+        os.replace(tmp_path, cache_path)
+        # Populate LRU on successful write
+        cache._lru_set(str(cache_path), data)
+    except BaseException:
         try:
-            with os.fdopen(fd, "wb") as f:
-                pickle.dump(data, f)
-            os.replace(tmp_path, cache_path)
-            # Populate LRU on successful write
-            cache._lru_set(str(cache_path), data)
-        except BaseException:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 class _WriteCacheCollector:

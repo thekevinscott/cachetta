@@ -173,6 +173,29 @@ def describe_write_cache():
             assert leftovers == []
             assert not cache_path.exists()
 
+    def test_it_populates_lru_when_write_is_false():
+        """Regression test for #79: with write=False, the LRU should still be
+        populated so lru_size continues to short-circuit recomputation."""
+        cache = MockCache(path="unused.dat", lru_size=10)
+        cache.write = False
+
+        write_cache(cache, {"key": "value"})
+
+        cache_path = cache._get_path()
+        assert cache._lru_get(str(cache_path)) == {"key": "value"}
+        assert not Path("unused.dat").exists()
+
+    def test_it_skips_lru_population_when_write_false_and_no_lru():
+        """When write=False and lru_size is unset, `_lru_set` should not even
+        be reached (LRU stays disabled)."""
+        cache = MockCache(path="unused2.dat")
+        cache.write = False
+        assert cache.lru_size is None
+
+        write_cache(cache, {"key": "value"})
+
+        assert not Path("unused2.dat").exists()
+
     def test_it_swallows_oserror_during_temp_file_cleanup():
         """If unlinking the temp file fails with OSError, it is swallowed and the
         original pickling error still propagates."""

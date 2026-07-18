@@ -542,6 +542,28 @@ def describe_lru_integration():
         assert cache._lru_get("key3") is not _LRU_MISS
         assert cache._lru_get("key4") is not _LRU_MISS
 
+    def test_lru_serves_from_memory_when_write_false():
+        # Regression test for #79: with write=False, disk persistence is
+        # disabled, but lru_size should still short-circuit recomputation via
+        # the in-memory LRU.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            call_count = 0
+            cache = Cachetta(path=f"{tmpdir}/lru-no-write.json", write=False, lru_size=10)
+
+            @cache
+            def compute():
+                nonlocal call_count
+                call_count += 1
+                return {"result": call_count}
+
+            r1 = compute()
+            r2 = compute()
+
+            assert r1 == {"result": 1}
+            assert r2 == {"result": 1}
+            assert call_count == 1  # Second call served from LRU, not recomputed
+            assert not Path(f"{tmpdir}/lru-no-write.json").exists()  # Disk write still skipped
+
 
 # -- read=False, write=False combinations --
 
