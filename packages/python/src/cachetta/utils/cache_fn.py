@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import contextmanager
 from types import MethodType
 from typing import Callable
 from functools import update_wrapper, wraps
@@ -62,6 +63,48 @@ def _should_cache(cache, result) -> bool:
     return cache.condition(result)
 
 
+@contextmanager
+def _log_errors(kind: str, fn_name: str):
+    """Log and re-raise any exception raised by the wrapped function.
+
+    ``kind`` is "sync" or "async" and reproduces the original per-flavor log
+    message verbatim.
+    """
+    try:
+        yield
+    except Exception as e:
+        logger.error("Error executing %s function %s: %s", kind, fn_name, e)
+        raise
+
+
+def _execute_and_maybe_cache_sync(cache, fn: Callable, args, kwargs, fn_name: str):
+    """Run ``fn``, write the result to cache if it qualifies, and return it."""
+    data = fn(*args, **kwargs)
+    logger.debug("Executed sync function %s, writing data to %s", fn_name, cache.path)
+    if _should_cache(cache, data):
+        write_cache(cache, data, *args, **kwargs)
+        logger.debug("Wrote data for %s to %s", fn_name, cache.path)
+    return data
+
+
+async def _execute_and_maybe_cache_async(cache, fn: Callable, args, kwargs, fn_name: str, *, log: bool = True):
+    """Await ``fn``, write the result to cache if it qualifies, and return it.
+
+    ``log`` controls whether the debug "executed"/"wrote" messages are
+    emitted; the background stale-while-revalidate refresh runs silently on
+    this axis (matching its pre-refactor behavior), while the foreground
+    execution path logs both steps.
+    """
+    result = await fn(*args, **kwargs)
+    if log:
+        logger.debug("Executed async function %s, writing data to %s", fn_name, cache.path)
+    if _should_cache(cache, result):
+        await async_write_cache(cache, result, *args, **kwargs)
+        if log:
+            logger.debug("Wrote data for %s to %s", fn_name, cache.path)
+    return result
+
+
 def _build(cache, fn: Callable) -> Callable:
     # `Callable` doesn't statically expose `__name__`; resolve it once (with a
     # safe fallback) for the log messages below.
@@ -92,9 +135,7 @@ def _build(cache, fn: Callable) -> Callable:
                             if key not in _in_flight:
                                 async def _bg_refresh():
                                     try:
-                                        result = await fn(*args, **kwargs)
-                                        if _should_cache(cache, result):
-                                            await async_write_cache(cache, result, *args, **kwargs)
+                                        await _execute_and_maybe_cache_async(cache, fn, args, kwargs, fn_name, log=False)
                                     except Exception as e:
                                         logger.error("Background revalidation failed for %s: %s", cache_key, e)
 
@@ -114,16 +155,8 @@ def _build(cache, fn: Callable) -> Callable:
                         task = existing
                     else:
                         async def _execute():
-                            try:
-                                result = await fn(*args, **kwargs)
-                                logger.debug("Executed async function %s, writing data to %s", fn_name, cache.path)
-                                if _should_cache(cache, result):
-                                    await async_write_cache(cache, result, *args, **kwargs)
-                                    logger.debug("Wrote data for %s to %s", fn_name, cache.path)
-                                return result
-                            except Exception as e:
-                                logger.error("Error executing async function %s: %s", fn_name, e)
-                                raise
+                            with _log_errors("async", fn_name):
+                                return await _execute_and_maybe_cache_async(cache, fn, args, kwargs, fn_name)
 
                         task = asyncio.ensure_future(_execute())
                         _in_flight[key] = task
@@ -152,15 +185,8 @@ def _build(cache, fn: Callable) -> Callable:
                             return stale_data
 
                     logger.debug("Data is None, executing sync function %s", fn_name)
-                    try:
-                        data = fn(*args, **kwargs)
-                        logger.debug("Executed sync function %s, writing data to %s", fn_name, cache.path)
-                        if _should_cache(cache, data):
-                            write_cache(cache, data, *args, **kwargs)
-                            logger.debug("Wrote data for %s to %s", fn_name, cache.path)
-                    except Exception as e:
-                        logger.error("Error executing sync function %s: %s", fn_name, e)
-                        raise
+                    with _log_errors("sync", fn_name):
+                        data = _execute_and_maybe_cache_sync(cache, fn, args, kwargs, fn_name)
                 else:
                     logger.debug("Data is not None, returning data for %s", fn_name)
                 return data
