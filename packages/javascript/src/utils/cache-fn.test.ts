@@ -235,7 +235,7 @@ describe('cacheFn', () => {
       const originalMethodA = vi.fn(() => new Promise<string>((resolve) => { resolveA = resolve; }));
       const originalMethodB = vi.fn().mockResolvedValue('result-b');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
       const wrappedA = cacheFn(cacheA, originalMethodA);
@@ -261,7 +261,7 @@ describe('cacheFn', () => {
       let resolveOriginal: (value: string) => void = () => {};
       const originalMethod = vi.fn(() => new Promise<string>((resolve) => { resolveOriginal = resolve; }));
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
       const wrappedFn = cacheFn(cache, originalMethod);

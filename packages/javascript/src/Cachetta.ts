@@ -7,15 +7,9 @@ import { promises as fs, unlinkSync } from 'fs';
 import { join } from 'path';
 import { inspect } from 'util';
 
-import { LRU_MISS } from './constants.js';
 import { hash } from './hash.js';
 
 const DEFAULT_DURATION = 7 * 24 * 60 * 60 * 1000; // Default 7 days in milliseconds
-
-interface LruEntry {
-  value: unknown;
-  timestamp: number;
-}
 
 export class Cachetta<Path extends string | PathFn<any> = string> extends Function {
   protected __cacheBuddy__ = true;
@@ -23,14 +17,11 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   public write!: boolean;
   public read!: boolean;
   public duration!: number; // milliseconds
-  public lruSize!: number | undefined;
   public condition!: ((result: unknown) => boolean) | undefined;
   public staleDuration!: number | undefined;
   public hashed!: boolean;
   /** Alias for {@link invalidate}. Deletes the cache file. */
   public clear!: (...args: unknown[]) => Promise<void>;
-  /** @internal */
-  _lru!: Map<string, LruEntry> | undefined;
 
   constructor(config: CacheConfig<Path>) {
     super();
@@ -38,11 +29,9 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
     this.write = config.write ?? true;
     this.read = config.read ?? true;
     this.duration = config.duration ?? DEFAULT_DURATION;
-    this.lruSize = config.lruSize;
     this.condition = config.condition;
     this.staleDuration = config.staleDuration;
     this.hashed = config.hashed ?? false;
-    this._lru = this.lruSize ? new Map() : undefined;
     const boundCall = this.call.bind(this);
     const result = Object.assign(
       boundCall,
@@ -62,11 +51,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
         info: this.info.bind(this),
         infoSync: this.infoSync.bind(this),
         _getPath: this._getPath.bind(this),
-        _lruGet: this._lruGet.bind(this),
-        _lruSet: this._lruSet.bind(this),
         __cacheBuddy__: true,
-        _lru: this._lru,
-        lruSize: this.lruSize,
         condition: this.condition,
         staleDuration: this.staleDuration,
       }) as unknown as typeof boundCall & typeof this & { [inspect.custom]: () => string };
@@ -80,7 +65,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
       write: kwargs.write ?? this.write,
       read: kwargs.read ?? this.read,
       duration: kwargs.duration ?? this.duration,
-      lruSize: kwargs.lruSize ?? this.lruSize,
       condition: kwargs.condition ?? this.condition,
       staleDuration: kwargs.staleDuration ?? this.staleDuration,
       hashed: kwargs.hashed ?? this.hashed,
@@ -98,9 +82,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   async invalidate(...args: unknown[]): Promise<void> {
     const cachePath = this._getPath(...args);
     validateCachePath(cachePath);
-    if (this._lru) {
-      this._lru.delete(cachePath);
-    }
     try {
       await fs.unlink(cachePath);
     } catch (error) {
@@ -113,9 +94,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   invalidateSync(...args: unknown[]): void {
     const cachePath = this._getPath(...args);
     validateCachePath(cachePath);
-    if (this._lru) {
-      this._lru.delete(cachePath);
-    }
     try {
       unlinkSync(cachePath);
     } catch (error) {
@@ -186,35 +164,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
       return join(base, hash(...args));
     }
     return base;
-  }
-
-  _lruGet(key: string): unknown | typeof LRU_MISS {
-    if (!this._lru) return LRU_MISS;
-    const entry = this._lru.get(key);
-    if (!entry) return LRU_MISS;
-
-    const age = Date.now() - entry.timestamp;
-    if (age > this.duration) {
-      this._lru.delete(key);
-      return LRU_MISS;
-    }
-
-    this._lru.delete(key);
-    this._lru.set(key, entry);
-    return entry.value;
-  }
-
-  _lruSet(key: string, value: unknown): void {
-    if (!this._lru || !this.lruSize) return;
-
-    if (this._lru.size >= this.lruSize && !this._lru.has(key)) {
-      const firstKey = this._lru.keys().next().value;
-      if (firstKey !== undefined) {
-        this._lru.delete(firstKey);
-      }
-    }
-
-    this._lru.set(key, { value, timestamp: Date.now() });
   }
 
   // Decorator usage: @cache

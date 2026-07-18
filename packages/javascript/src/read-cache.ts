@@ -1,5 +1,5 @@
 import type { Cachetta } from './Cachetta.js';
-import { LRU_MISS, CACHE_MISS } from './constants.js';
+import { CACHE_MISS } from './constants.js';
 import { promises as fs, readFileSync } from 'fs';
 import { deserialize } from 'v8';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
@@ -52,19 +52,11 @@ export async function readCacheOrMiss<T>(cacheBuddy: Cachetta<any>, ...args: unk
   const cachePath = cacheBuddy._getPath(...args);
   validateCachePath(cachePath);
 
-  // Check in-memory LRU before hitting disk
-  const lruResult = cacheBuddy._lruGet(cachePath);
-  if (lruResult !== LRU_MISS) {
-    logger.debug(`LRU cache hit for ${cachePath}`);
-    return lruResult as T;
-  }
-
   if (await shouldUseReadCache(cacheBuddy, cachePath)) {
     logger.debug(`Using cache at ${cachePath}`);
     const result = await readCacheFile<T>(cachePath);
     if (result !== CACHE_MISS) {
       logger.debug(`Used cache at ${cachePath}`);
-      cacheBuddy._lruSet(cachePath, result);
     }
     return result;
   } else {
@@ -82,18 +74,11 @@ export function readCacheSyncOrMiss<T>(cacheBuddy: Cachetta<any>, ...args: unkno
   const cachePath = cacheBuddy._getPath(...args);
   validateCachePath(cachePath);
 
-  const lruResult = cacheBuddy._lruGet(cachePath);
-  if (lruResult !== LRU_MISS) {
-    logger.debug(`LRU cache hit for ${cachePath}`);
-    return lruResult as T;
-  }
-
   if (shouldUseReadCacheSync(cacheBuddy, cachePath)) {
     logger.debug(`Using cache at ${cachePath}`);
     const result = readCacheFileSync<T>(cachePath);
     if (result !== CACHE_MISS) {
       logger.debug(`Used cache at ${cachePath}`);
-      cacheBuddy._lruSet(cachePath, result);
     }
     return result;
   } else {

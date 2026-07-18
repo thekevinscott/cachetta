@@ -115,14 +115,6 @@ describe('readCache', () => {
     await expect(readCache(cache)).rejects.toThrow(InvalidPathError);
   });
 
-  it('should return the value from the LRU cache without touching disk', () => {
-    const cachePath = join(tempDir, 'lru-async.json');
-    const cache = new Cachetta({ path: cachePath, lruSize: 10, duration: 60000 });
-    // Prime the LRU; the file does not exist so a disk read would return null.
-    cache._lruSet(cachePath, { fromLru: true });
-    return expect(readCache(cache)).resolves.toEqual({ fromLru: true });
-  });
-
   it('should return null when the file vanishes after the freshness check (ENOENT in readCacheFile)', async () => {
     const cachePath = join(tempDir, 'vanishing.json');
     const cache = new Cachetta({ path: cachePath, read: true });
@@ -173,14 +165,6 @@ describe('readCacheSync', () => {
   it('should reject paths with traversal segments', () => {
     const cache = new Cachetta({ path: '../etc/passwd' });
     expect(() => readCacheSync(cache)).toThrow(InvalidPathError);
-  });
-
-  it('should return the value from the LRU cache without touching disk', async () => {
-    const cachePath = join(tempDir, 'sync-lru.json');
-    const cache = new Cachetta({ path: cachePath, lruSize: 10, duration: 60000 });
-    // Prime the LRU; the file does not exist so a disk read would return null.
-    cache._lruSet(cachePath, { fromLru: true });
-    expect(readCacheSync(cache)).toEqual({ fromLru: true });
   });
 
   it('should return null when the file vanishes after the freshness check (ENOENT in readCacheFileSync)', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { promises as fs, utimesSync, accessSync, writeFileSync as fsWriteFileSync, unlinkSync as fsUnlinkSync } from 'fs';
+import { promises as fs, utimesSync, accessSync, writeFileSync as fsWriteFileSync } from 'fs';
 import { join } from 'path';
 import { deserialize } from 'v8';
 import { Cachetta, readCache, writeCache, readCacheSync, writeCacheSync, CachettaError, InvalidPathError } from 'cachetta';
@@ -394,42 +394,6 @@ describe('comprehensive integration tests', () => {
     });
   });
 
-  describe('LRU cache integration', () => {
-    it('should serve from LRU on second read', async () => {
-      const cachePath = join(tempDir, 'lru.json');
-      const cache = new Cachetta({ path: cachePath, lruSize: 5, duration: 60000 });
-
-      await writeCache(cache, { lru: true });
-
-      // First read populates LRU
-      expect(await readCache(cache)).toEqual({ lru: true });
-
-      // Delete the file - LRU should still serve
-      await fs.unlink(cachePath);
-      expect(await readCache(cache)).toEqual({ lru: true });
-    });
-
-    it('LRU should respect duration', async () => {
-      vi.useFakeTimers();
-      try {
-        const cachePath = join(tempDir, 'lru-exp.json');
-        const cache = new Cachetta({ path: cachePath, lruSize: 5, duration: 100 });
-
-        await writeCache(cache, { data: 1 });
-        expect(await readCache(cache)).toEqual({ data: 1 });
-
-        // Advance fake clock past LRU expiry and age the file to match
-        await vi.advanceTimersByTimeAsync(150);
-        await setTimeOfFile(150, cachePath);
-
-        // Both LRU entry and file are expired, so readCache should return null
-        expect(await readCache(cache)).toBeNull();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-  });
-
   describe('promise deduplication', () => {
     it('should deduplicate concurrent calls to same cache path', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'dedup.json') });
@@ -580,7 +544,7 @@ describe('comprehensive integration tests', () => {
       expect(await cached()).toEqual({ version: 1 });
       expect(callCount).toBe(1);
 
-      // Use fake timers to advance clock for LRU expiry and stale detection
+      // Use fake timers to advance clock for stale detection
       vi.useFakeTimers();
       await vi.advanceTimersByTimeAsync(2000);
       await setTimeOfFile(2000, cachePath);
@@ -786,8 +750,6 @@ describe('comprehensive integration tests', () => {
 
       // Age the file past duration but within staleDuration
       setTimeOfFileSync(2000, cachePath);
-      // Clear LRU so we hit disk
-      cache._lru?.clear();
 
       expect(cached()).toEqual({ version: 1 }); // stale data returned
       // In sync mode, no background refresh fires, so calls stays at 1
@@ -885,20 +847,6 @@ describe('comprehensive integration tests', () => {
     it('should throw InvalidPathError for .. segments in writeCacheSync', () => {
       const cache = new Cachetta({ path: join(tempDir, '../../escape.json') });
       expect(() => writeCacheSync(cache, { bad: true })).toThrow(InvalidPathError);
-    });
-  });
-
-  describe('sync: LRU cache integration', () => {
-    it('should serve from LRU on second sync read', () => {
-      const cachePath = join(tempDir, 'sync-lru.json');
-      const cache = new Cachetta({ path: cachePath, lruSize: 5, duration: 60000 });
-
-      writeCacheSync(cache, { lru: true });
-      expect(readCacheSync(cache)).toEqual({ lru: true });
-
-      // Delete the file - LRU should still serve
-      fsUnlinkSync(cachePath);
-      expect(readCacheSync(cache)).toEqual({ lru: true });
     });
   });
 

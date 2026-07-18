@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Cachetta } from './Cachetta.js';
-import { LRU_MISS } from './constants.js';
 import type { CacheConfig } from './types.js';
 import { cacheFn } from './utils/cache-fn.js';
 import { promises as fs } from 'fs';
@@ -29,7 +28,6 @@ describe('Cachetta', () => {
       expect(cache.write).toBe(true);
       expect(cache.read).toBe(true);
       expect(cache.duration).toBe(7 * 24 * 60 * 60 * 1000); // 7 days
-      expect(cache.lruSize).toBeUndefined();
     });
 
     it('should create instance with custom values', () => {
@@ -120,57 +118,6 @@ describe('Cachetta', () => {
       expect(output).toContain('write: false');
       expect(output).toContain('read: false');
       expect(output).toContain('duration: 5000');
-    });
-  });
-
-  describe('LRU cache', () => {
-    it('should not create LRU when lruSize is not set', () => {
-      const cache = new Cachetta({ path: './test.json' });
-      expect(cache._lru).toBeUndefined();
-    });
-
-    it('should create LRU when lruSize is set', () => {
-      const cache = new Cachetta({ path: './test.json', lruSize: 10 });
-      expect(cache._lru).toBeInstanceOf(Map);
-      expect(cache.lruSize).toBe(10);
-    });
-
-    it('should store and retrieve values from LRU', () => {
-      const cache = new Cachetta({ path: './test.json', lruSize: 10, duration: 60000 });
-      cache._lruSet('key1', { data: 'test' });
-
-      expect(cache._lruGet('key1')).toEqual({ data: 'test' });
-    });
-
-    it('should return LRU_MISS for missing LRU keys', () => {
-      const cache = new Cachetta({ path: './test.json', lruSize: 10, duration: 60000 });
-
-      expect(cache._lruGet('missing')).toBe(LRU_MISS);
-    });
-
-    it('should evict oldest entry when at capacity', () => {
-      const cache = new Cachetta({ path: './test.json', lruSize: 2, duration: 60000 });
-      cache._lruSet('key1', 'value1');
-      cache._lruSet('key2', 'value2');
-      cache._lruSet('key3', 'value3'); // should evict key1
-
-      expect(cache._lruGet('key1')).toBe(LRU_MISS);
-      expect(cache._lruGet('key2')).toBe('value2');
-      expect(cache._lruGet('key3')).toBe('value3');
-    });
-
-    it('should return LRU_MISS when LRU is disabled', () => {
-      const cache = new Cachetta({ path: './test.json' });
-      cache._lruSet('key1', 'value1');
-
-      expect(cache._lruGet('key1')).toBe(LRU_MISS);
-    });
-
-    it('should copy lruSize to copies', () => {
-      const original = new Cachetta({ path: './test.json', lruSize: 5 });
-      const copy = original.copy({});
-
-      expect(copy.lruSize).toBe(5);
     });
   });
 
@@ -299,18 +246,6 @@ describe('Cachetta', () => {
     it('should not throw when file does not exist', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'nonexistent.json') });
       await expect(cache.invalidate()).resolves.toBeUndefined();
-    });
-
-    it('should remove entry from LRU cache', async () => {
-      const cachePath = join(tempDir, 'test.json');
-      await fs.writeFile(cachePath, '{"data":1}');
-
-      const cache = new Cachetta({ path: cachePath, lruSize: 10, duration: 60000 });
-      cache._lruSet(cachePath, { data: 1 });
-      expect(cache._lruGet(cachePath)).toEqual({ data: 1 });
-
-      await cache.invalidate();
-      expect(cache._lruGet(cachePath)).toBe(LRU_MISS);
     });
 
     it('clear should be an alias for invalidate', async () => {
@@ -465,18 +400,6 @@ describe('Cachetta', () => {
     });
   });
 
-  describe('_lruGet expiry', () => {
-    it('should evict and return LRU_MISS when entry is older than duration', () => {
-      const cache = new Cachetta({ path: './test.json', lruSize: 10, duration: 1000 });
-      cache._lruSet('key1', 'value1');
-      // Force the stored timestamp to be older than the duration
-      const entry = cache._lru!.get('key1')!;
-      entry.timestamp = Date.now() - 5000;
-      expect(cache._lruGet('key1')).toBe(LRU_MISS);
-      expect(cache._lru!.has('key1')).toBe(false);
-    });
-  });
-
   describe('wrapSync', () => {
     let tempDir: string;
 
@@ -514,15 +437,13 @@ describe('Cachetta', () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     });
 
-    it('invalidateSync should delete the cache file and clear the LRU entry', async () => {
+    it('invalidateSync should delete the cache file', async () => {
       const cachePath = join(tempDir, 'sync-inv.json');
       await fs.writeFile(cachePath, '{"data":1}');
 
-      const cache = new Cachetta({ path: cachePath, lruSize: 10, duration: 60000 });
-      cache._lruSet(cachePath, { data: 1 });
+      const cache = new Cachetta({ path: cachePath, duration: 60000 });
       cache.invalidateSync();
 
-      expect(cache._lruGet(cachePath)).toBe(LRU_MISS);
       await expect(fs.access(cachePath)).rejects.toThrow();
     });
 

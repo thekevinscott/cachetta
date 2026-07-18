@@ -66,14 +66,6 @@ Pass a function `path` to vary the cache file by argument. A string `path` is us
 
 [→ Per-Argument Cache Files](./docs/javascript.md#per-argument-cache-files)
 
-## In-Memory LRU
-
-```javascript
-const cache = new Cachetta({ path: './cache.json', lruSize: 100 });
-```
-
-[→ In-Memory LRU](./docs/javascript.md#in-memory-lru)
-
 ## Conditional Caching
 
 ```javascript
@@ -154,7 +146,6 @@ setLogLevel('debug');
 | `path` | `string \| Function` | required |
 | `read` / `write` | `boolean` | `true` |
 | `duration` | `number` (ms) | 7 days |
-| `lruSize` | `number` | undefined |
 | `condition` | `Function` | undefined |
 | `staleDuration` | `number` | undefined |
 

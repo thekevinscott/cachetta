@@ -102,10 +102,6 @@ describe('type-guards', () => {
       expect(isPartialCacheConfig({ staleDuration: 5000 })).toBe(true);
     });
 
-    it('should return true for config with lruSize', () => {
-      expect(isPartialCacheConfig({ lruSize: 10 })).toBe(true);
-    });
-
     it('should return true for config with hashed only (issue #84)', () => {
       expect(isPartialCacheConfig({ hashed: true })).toBe(true);
     });
