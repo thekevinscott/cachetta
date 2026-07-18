@@ -39,18 +39,38 @@ nobody uses, it's gone. `Cachetta` now has no in-memory cache; every read
 (`readCache`/`readCacheSync`, and reads inside wrapped functions) hits
 disk directly. Write paths no longer populate any in-process cache.
 
+Separately, `InvalidPathError` and the path-traversal check it guarded have
+been removed (#86). The check only rejected literal `..` segments in a
+resolved path — an absolute path (e.g. `/etc/passwd`) or a path through a
+symlink passed through untouched — so it was cosmetic: it overstated the
+guarantee ("path traversal detected") without closing the actual risk. The
+maintainer, as sole consumer, has decided `path` (literal or `PathFn`) is
+trusted developer input, not sanitized. Cachetta now resolves the path
+and uses it as-is; it does not sandbox to a base directory, canonicalize
+symlinks, or reject absolute/`..` paths. See "Path Contract" in
+`docs/javascript.md`.
+
 ### Required changes
 | Before | After |
 |--------|-------|
 | `new Cachetta({ path: 'cache.json', lruSize: 100 })` | `new Cachetta({ path: 'cache.json' })` |
 | `cache.copy({ lruSize: 50 })` | `cache.copy({})` |
+| `import { InvalidPathError } from 'cachetta'` | remove the import; the class no longer exists |
+| `try { ... } catch (e) { if (e instanceof InvalidPathError) ... }` | remove the branch — no path-related error is thrown for absolute paths, `..` segments, or symlinks |
 
 If you relied on the LRU purely as a performance optimization to avoid
 disk reads, and you need that back, add your own memoization layer in
 front of the wrapped function — cachetta no longer provides one.
 
+If you relied on `InvalidPathError` as a security boundary against
+untrusted path input, that boundary never existed in a form you could
+depend on (absolute paths and symlinks always bypassed it). Do not pass
+untrusted data into `path` or the arguments a `PathFn` receives — build
+paths only from trusted, static, or internally-generated values.
+
 ### Deprecations removed
-None. `lruSize` was not deprecated before this removal.
+None. Neither `lruSize` nor the `..` path check were deprecated before
+removal.
 
 ### Behavior changes without code changes
 - Every cache read now touches disk, even for repeated reads of the same
@@ -60,6 +80,11 @@ None. `lruSize` was not deprecated before this removal.
 - `lruSize` in a config object passed to `new Cachetta(...)` or
   `cache.copy(...)` is now silently ignored at runtime (TypeScript
   rejects it at compile time via the `CacheConfig` type).
+- A `path` (literal or returned by a `PathFn`) containing a `..` segment,
+  or an absolute path, no longer throws. It resolves and is used exactly
+  as given — previously a literal `..` segment threw `InvalidPathError`;
+  absolute paths and symlink-escaping paths already worked before this
+  change and continue to work identically.
 
 ### Verification
 - After upgrading, run:
@@ -71,6 +96,16 @@ None. `lruSize` was not deprecated before this removal.
   ```
   Both assertions should hold. Pre-upgrade, `cache._lru` and
   `cache.lruSize` were defined properties on every instance.
+- Confirm `InvalidPathError` is gone and a `..`-containing path no longer
+  throws:
+  ```ts
+  import { Cachetta, writeCache } from 'cachetta';
+  import { join } from 'path';
+  import { tmpdir } from 'os';
+
+  const cache = new Cachetta({ path: join(tmpdir(), '..', 'cachetta_check.json'), write: true });
+  await writeCache(cache, { ok: true }); // no longer throws
+  ```
 
 ## v0.3 → v0.4
 

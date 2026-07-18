@@ -50,8 +50,8 @@ await callLLM('claude', 'hi');                      // .../claude/<hash('hi')>
 (like clients, loggers, or other knobs) is left out of the key.
 
 **On disk:** `~/.cache/my-awesome-library/{model}/{hash(prompt)}`. The returned
-path is validated against `..` traversal — paths that escape the base throw
-`InvalidPathError`.
+path is used as given — cachetta trusts it, so never build it from untrusted
+input (see [Path Contract](../../javascript.md#path-contract)).
 
 **Gotchas:**
 - The function must be **deterministic** across runs — keying on `Date.now()` or

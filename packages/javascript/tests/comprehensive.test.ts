@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs, utimesSync, accessSync, writeFileSync as fsWriteFileSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { deserialize } from 'v8';
-import { Cachetta, readCache, writeCache, readCacheSync, writeCacheSync, CachettaError, InvalidPathError } from 'cachetta';
+import { Cachetta, readCache, writeCache, readCacheSync, writeCacheSync, CachettaError } from 'cachetta';
 
 const setTimeOfFile = async (amount: number, cachePath: string) => {
   const oldTime = new Date(Date.now() - amount);
@@ -318,15 +319,17 @@ describe('comprehensive integration tests', () => {
     });
   });
 
-  describe('path traversal rejection', () => {
-    it('should throw InvalidPathError for .. segments in readCache', async () => {
-      const cache = new Cachetta({ path: '../etc/passwd' });
-      await expect(readCache(cache)).rejects.toThrow(InvalidPathError);
-    });
-
-    it('should throw InvalidPathError for .. segments in writeCache', async () => {
-      const cache = new Cachetta({ path: join(tempDir, '../../escape.json') });
-      await expect(writeCache(cache, { bad: true })).rejects.toThrow(InvalidPathError);
+  describe('trusted path contract', () => {
+    it('should write and read via an absolute path outside the CWD', async () => {
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), 'cachetta-trust-'));
+      try {
+        const cachePath = join(outsideDir, 'trusted.json');
+        const cache = new Cachetta({ path: cachePath, write: true, read: true });
+        await writeCache(cache, { trusted: true });
+        expect(await readCache(cache)).toEqual({ trusted: true });
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
     });
   });
 
@@ -838,15 +841,17 @@ describe('comprehensive integration tests', () => {
     });
   });
 
-  describe('sync: path traversal rejection', () => {
-    it('should throw InvalidPathError for .. segments in readCacheSync', () => {
-      const cache = new Cachetta({ path: '../etc/passwd' });
-      expect(() => readCacheSync(cache)).toThrow(InvalidPathError);
-    });
-
-    it('should throw InvalidPathError for .. segments in writeCacheSync', () => {
-      const cache = new Cachetta({ path: join(tempDir, '../../escape.json') });
-      expect(() => writeCacheSync(cache, { bad: true })).toThrow(InvalidPathError);
+  describe('sync: trusted path contract', () => {
+    it('should write and read via an absolute path outside the CWD', async () => {
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), 'cachetta-trust-sync-'));
+      try {
+        const cachePath = join(outsideDir, 'trusted.json');
+        const cache = new Cachetta({ path: cachePath, write: true, read: true });
+        writeCacheSync(cache, { trusted: true });
+        expect(readCacheSync(cache)).toEqual({ trusted: true });
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
     });
   });
 
