@@ -265,6 +265,12 @@ const cache = new Cachetta({
 });
 ```
 
+Computation is single-flight per cache key within a wrapped function:
+a background refresh and a direct (cache-miss) call never run the
+underlying function concurrently. A caller that misses the cache while a
+background refresh is already running awaits that refresh and receives
+its result — including its error, if the refresh fails.
+
 ## Cache Invalidation
 
 ```javascript
