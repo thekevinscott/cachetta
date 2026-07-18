@@ -14,7 +14,6 @@ from cachetta import (
     Cachetta,
     CachettaError,
     CacheCorruptError,
-    InvalidPathError,
     read_cache,
     write_cache,
     write_cache_ctx,
@@ -354,11 +353,11 @@ def describe_copy_and_composition():
             assert r3 == {"kind": "html", "ident": "abc", "n": 2}
             assert (Path(tmpdir) / "html" / "abc.pkl").exists()
 
-    def test_slash_callable_rejects_path_traversal():
-        """Callable returning a `..`-traversing path should raise InvalidPathError."""
+    def test_slash_callable_uses_path_traversal_as_given():
+        """A callable returning a `..`-traversing path is used verbatim: cache
+        paths are trusted input, not validated (see docs/python.md)."""
         cache = Cachetta(path="base") / (lambda: "../escape/file.pkl")
-        with pytest.raises(InvalidPathError, match="Path traversal"):
-            cache._get_path()
+        assert cache._get_path() == Path("base/../escape/file.pkl")
 
     def test_slash_callable_composition_with_hash_helper():
         """A callable returned from `/` can use a hash-style helper to key on a
@@ -436,28 +435,48 @@ def describe_corrupt_cache_recovery():
             assert result is None
 
 
-# -- Path traversal rejection --
+# -- Paths are trusted input --
+#
+# Cachetta does not validate `path` (literal or callable): `..` segments,
+# absolute paths, and symlinks are all used as given. Cache paths are
+# developer-authored configuration, not untrusted input — see
+# docs/python.md for the full contract.
 
-def describe_path_traversal():
-    def test_rejects_dotdot_in_string_path():
+def describe_trusted_paths():
+    def test_dotdot_in_string_path_is_used_as_given():
         cache = Cachetta(path="foo/../../../etc/passwd")
-        with pytest.raises(InvalidPathError, match="Path traversal"):
-            cache._get_path()
+        assert cache._get_path() == Path("foo/../../../etc/passwd")
 
-    def test_rejects_dotdot_in_function_path():
+    def test_dotdot_in_function_path_is_used_as_given():
         cache = Cachetta(path=lambda: "../../../etc/passwd")
-        with pytest.raises(InvalidPathError, match="Path traversal"):
-            cache._get_path()
+        assert cache._get_path() == Path("../../../etc/passwd")
 
-    def test_rejects_dotdot_in_path_object():
+    def test_dotdot_in_path_object_is_used_as_given():
         cache = Cachetta(path=Path("foo/../../bar"))
-        with pytest.raises(InvalidPathError, match="Path traversal"):
-            cache._get_path()
+        assert cache._get_path() == Path("foo/../../bar")
 
     def test_allows_path_with_dots_in_filename():
         cache = Cachetta(path="foo/bar.baz.json")
         result = cache._get_path()
         assert result == Path("foo/bar.baz.json")
+
+    def test_absolute_path_outside_cwd_writes_and_reads(tmp_path):
+        """An absolute path pointing outside the CWD works end-to-end: it
+        is used verbatim, with no rejection."""
+        abs_path = tmp_path / "nested" / "cache.pkl"
+        cache = Cachetta(path=str(abs_path))
+
+        @cache
+        def compute():
+            return {"value": 42}
+
+        result = compute()
+        assert result == {"value": 42}
+        assert abs_path.exists()
+
+        # Second call reads back from the same absolute path.
+        result2 = compute()
+        assert result2 == {"value": 42}
 
 
 # -- Atomic write safety --
@@ -584,7 +603,6 @@ def describe_large_data():
 def describe_exception_types():
     def test_cache_buddy_error_is_base():
         assert issubclass(CacheCorruptError, CachettaError)
-        assert issubclass(InvalidPathError, CachettaError)
 
 
 # -- Cachetta construction --

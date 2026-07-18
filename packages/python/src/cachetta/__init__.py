@@ -4,7 +4,6 @@ from .write_cache import write_cache, write_cache_ctx, async_write_cache, async_
 from .exceptions import (
     CachettaError,
     CacheCorruptError,
-    InvalidPathError,
 )
 from .safe_pickle import UnsafePickleError
 from .hash import hash
@@ -21,7 +20,6 @@ __all__ = [
     "Cachetta",
     "CachettaError",
     "CacheCorruptError",
-    "InvalidPathError",
     "UnsafePickleError",
     "hash",
 ]

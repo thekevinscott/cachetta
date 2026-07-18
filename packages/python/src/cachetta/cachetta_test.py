@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch, Mock, MagicMock
 import tempfile
 from cachetta.cachetta import Cachetta
-from cachetta.exceptions import CachettaError, InvalidPathError
+from cachetta.exceptions import CachettaError
 from datetime import timedelta
 from time import time
 from typing import Any
@@ -77,15 +77,19 @@ def describe_cache():
         assert isinstance(result, Path)
         assert result == Path("./cache/user-123/data.json")
 
-    def test_get_path_rejects_path_traversal():
+    def test_get_path_uses_traversal_segments_as_given():
+        # Paths are trusted input: `..` segments and absolute paths are used
+        # verbatim, with no validation. See docs/python.md for the contract.
         cache = Cachetta(path="foo/../../../etc/passwd")
-        with pytest.raises(InvalidPathError, match="Path traversal detected"):
-            cache._get_path()
+        assert cache._get_path() == Path("foo/../../../etc/passwd")
 
-    def test_get_path_rejects_traversal_in_function_paths():
+    def test_get_path_uses_function_based_traversal_as_given():
         cache = Cachetta(path=lambda: "../secret/data.json")
-        with pytest.raises(InvalidPathError, match="Path traversal detected"):
-            cache._get_path()
+        assert cache._get_path() == Path("../secret/data.json")
+
+    def test_get_path_uses_absolute_path_as_given():
+        cache = Cachetta(path="/tmp/some/absolute/path.json")
+        assert cache._get_path() == Path("/tmp/some/absolute/path.json")
 
     def test_it_returns_a_derived_cache_obj():
         cache = Cachetta(path="foo")
@@ -110,10 +114,9 @@ def describe_cache():
         assert cache._get_path() == Path("base/llm-calls")
         assert cache._get_path("a") == Path("base/llm-calls")
 
-    def test_truediv_with_callable_rejects_traversal():
+    def test_truediv_with_callable_uses_traversal_as_given():
         cache = Cachetta(path="base") / (lambda: "../escape.pkl")
-        with pytest.raises(InvalidPathError, match="Path traversal"):
-            cache._get_path()
+        assert cache._get_path() == Path("base/../escape.pkl")
 
     def test_it_acts_as_a_decorator(mock_write_cache, mock_read_cache):
         with tempfile.TemporaryDirectory() as t:
