@@ -40,5 +40,5 @@ function_cache = cache / 'my-function'   # ~/.cache/my-awesome-library/my-functi
   a *subset* of the arguments. Use when some args (clients, loggers, knobs like
   `temperature`) shouldn't participate in the cache key.
 
-Full API (LRU, stale-while-revalidate, invalidation, inspection, pickle
+Full API (stale-while-revalidate, invalidation, inspection, pickle
 security): [Python reference](../../python.md).

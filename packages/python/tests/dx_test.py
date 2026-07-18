@@ -7,7 +7,6 @@ from datetime import timedelta
 from pathlib import Path
 from time import time
 from unittest.mock import patch, Mock, MagicMock
-from cachetta._sentinel import _LRU_MISS
 
 import pytest
 
@@ -106,18 +105,6 @@ def describe_cache_invalidation():
         cache = Cachetta(path="/nonexistent/test.json")
         # Should not raise
         cache.invalidate()
-
-    def test_invalidate_clears_lru():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "test.json"
-            cache_path.write_text('{"data": true}')
-
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-            cache._lru_set(str(cache_path), {"data": True})
-            assert cache._lru_get(str(cache_path)) is not _LRU_MISS
-
-            cache.invalidate()
-            assert cache._lru_get(str(cache_path)) is _LRU_MISS
 
     def test_clear_is_alias_for_invalidate():
         with tempfile.TemporaryDirectory() as tmpdir:

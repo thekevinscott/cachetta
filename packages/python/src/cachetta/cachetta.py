@@ -1,14 +1,11 @@
 import asyncio
 import os
-import threading
-from collections import OrderedDict
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from time import time
 from typing import Any, Callable, Optional
 from pathlib import Path
 from .exceptions import CachettaError, InvalidPathError
-from ._sentinel import _LRU_MISS
 from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
 from .utils.get_last_updated import async_get_last_updated
@@ -19,15 +16,14 @@ _SENTINEL = object()
 
 @dataclass
 class Cachetta:
-    """A file-based cache with optional in-memory LRU, conditional caching,
-    and stale-while-revalidate support.
+    """A file-based cache with conditional caching and
+    stale-while-revalidate support.
 
     Args:
         path: Cache file path (str/Path) or callable returning a path.
         write: Whether to write results to cache. Default True.
         read: Whether to read from cache. Default True.
         duration: How long cache entries are considered fresh. Default 7 days.
-        lru_size: Optional in-memory LRU cache size. When set, checks memory before disk.
         condition: Optional callable that receives the result and returns True to cache it.
         stale_duration: Optional duration after expiry during which stale data is returned
             while a background refresh runs.
@@ -36,48 +32,10 @@ class Cachetta:
     write: bool = True
     read: bool = True
     duration: timedelta = timedelta(days=7)
-    lru_size: int | None = None
     condition: Callable[[Any], bool] | None = None
     stale_duration: timedelta | None = None
     allowed_pickle_types: set[type] | None = None
     hashed: bool = False
-    _lru: OrderedDict | None = field(default=None, repr=False, compare=False)
-    _lru_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
-
-    def __post_init__(self):
-        if self.lru_size and self._lru is None:
-            self._lru = OrderedDict()
-
-    def _lru_get(self, key: str):
-        """Get a value from the in-memory LRU cache.
-        Returns _LRU_MISS if LRU is disabled, key not found, or entry is expired.
-        """
-        if self._lru is None:
-            return _LRU_MISS
-        with self._lru_lock:
-            entry = self._lru.get(key)
-            if entry is None:
-                return _LRU_MISS
-            value, timestamp = entry
-            age = time() - timestamp
-            if age > self.duration.total_seconds():
-                del self._lru[key]
-                return _LRU_MISS
-            # Move to end (most recently used)
-            self._lru.move_to_end(key)
-            return value
-
-    def _lru_set(self, key: str, value) -> None:
-        """Set a value in the in-memory LRU cache.
-        No-op if LRU is disabled.
-        """
-        if self._lru is None or not self.lru_size:
-            return
-        with self._lru_lock:
-            # Evict oldest if at capacity
-            if len(self._lru) >= self.lru_size and key not in self._lru:
-                self._lru.popitem(last=False)
-            self._lru[key] = (value, time())
 
     def _get_path(self, *args, **kwargs) -> Path:
         """Resolve the cache path.
@@ -195,17 +153,13 @@ class Cachetta:
         return replace(self, **kwargs)
 
     def invalidate(self, *args, **kwargs) -> None:
-        """Deletes the cache file on disk and clears LRU entries for this path.
+        """Deletes the cache file on disk.
         No-op if the cache file does not exist.
 
         Args:
             *args, **kwargs: Arguments to resolve the cache path (when using a path function).
         """
         cache_path = self._get_path(*args, **kwargs)
-
-        # Remove from LRU
-        if self._lru is not None:
-            self._lru.pop(str(cache_path), None)
 
         # Delete from disk
         try:
@@ -281,11 +235,6 @@ class Cachetta:
     async def ainvalidate(self, *args, **kwargs) -> None:
         """Async version of invalidate. Delegates disk I/O to a thread."""
         cache_path = self._get_path(*args, **kwargs)
-
-        # Remove from LRU (synchronous, fast)
-        if self._lru is not None:
-            with self._lru_lock:
-                self._lru.pop(str(cache_path), None)
 
         # Delete from disk in a thread
         try:

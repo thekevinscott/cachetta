@@ -1,10 +1,9 @@
-"""Tests for async I/O, async instance methods, LRU thread safety, and _created_dirs eviction."""
+"""Tests for async I/O, async instance methods, and _created_dirs eviction."""
 
 import asyncio
 import os
 import pickle
 import tempfile
-import threading
 from collections import OrderedDict
 from datetime import timedelta
 from pathlib import Path
@@ -20,7 +19,6 @@ from cachetta import (
     async_write_cache_ctx,
     write_cache,
 )
-from cachetta._sentinel import _LRU_MISS
 from cachetta.utils.cache_fn import _in_flight
 
 
@@ -167,20 +165,6 @@ def describe_async_read_write():
                 pass
             assert result is None
 
-    async def test_async_read_cache_lru_hit():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "lru.json"
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-
-            await async_write_cache(cache, {"lru": True})
-
-            # Corrupt file on disk - LRU should still serve
-            cache_path.write_text("corrupted!!!")
-
-            async with async_read_cache(cache) as result:
-                pass
-            assert result == {"lru": True}
-
     async def test_async_read_stale_cache():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "stale.dat"
@@ -221,17 +205,6 @@ def describe_async_instance_methods():
 
             # Should not raise
             await cache.ainvalidate()
-
-    async def test_ainvalidate_clears_lru():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "lru_inv.json"
-            cache = Cachetta(path=str(cache_path), lru_size=10)
-
-            write_cache(cache, {"data": True})
-            assert cache._lru_get(str(cache_path)) is not _LRU_MISS
-
-            await cache.ainvalidate()
-            assert cache._lru_get(str(cache_path)) is _LRU_MISS
 
     async def test_aclear_is_ainvalidate():
         assert Cachetta.aclear is Cachetta.ainvalidate
@@ -325,65 +298,6 @@ def describe_async_instance_methods():
             assert info["exists"] is True
             assert info["expired"] is True
             assert info["stale"] is True
-
-
-# -- LRU thread safety stress test --
-
-def describe_lru_thread_safety():
-    async def test_concurrent_lru_access():
-        """Stress test: many concurrent async tasks reading/writing LRU simultaneously."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache = Cachetta(
-                path=lambda i: f"{tmpdir}/{i}.json",
-                lru_size=50,
-            )
-
-            errors = []
-
-            async def worker(i):
-                try:
-                    key = f"key-{i % 20}"
-                    cache_path = str(cache._get_path(key))
-
-                    # Mix of reads and writes
-                    cache._lru_set(cache_path, {"i": i})
-                    await asyncio.sleep(0)  # yield to event loop
-                    cache._lru_get(cache_path)
-                    # result might be _LRU_MISS if evicted, that's fine
-                except Exception as e:
-                    errors.append(e)
-
-            # Run many concurrent tasks
-            tasks = [worker(i) for i in range(200)]
-            await asyncio.gather(*tasks)
-
-            assert errors == [], f"Errors during concurrent LRU access: {errors}"
-
-    def test_lru_thread_safety_with_threads():
-        """Stress test using actual OS threads to verify lock correctness."""
-        cache = Cachetta(path="test.json", lru_size=20)
-
-        errors = []
-        start_event = threading.Event()
-
-        def thread_worker(thread_id):
-            try:
-                start_event.wait(timeout=5)
-                for i in range(100):
-                    key = f"key-{i % 15}"
-                    cache._lru_set(key, {"thread": thread_id, "i": i})
-                    cache._lru_get(key)
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=thread_worker, args=(t,)) for t in range(10)]
-        for t in threads:
-            t.start()
-        start_event.set()
-        for t in threads:
-            t.join(timeout=10)
-
-        assert errors == [], f"Thread safety errors: {errors}"
 
 
 # -- _created_dirs eviction test --

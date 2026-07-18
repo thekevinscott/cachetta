@@ -185,7 +185,7 @@ call_llm('gpt', 'hi')      # ./cache/gpt/<hash('gpt', 'hi')>
 call_llm('claude', 'hi')   # ./cache/claude/<hash('claude', 'hi')>
 ```
 
-`hashed` composes with `condition`, async functions, and the LRU.
+`hashed` composes with `condition` and async functions.
 
 ### Public `hash` helper
 
@@ -203,19 +203,6 @@ def call_llm(model, prompt, *, temperature=0.7):
 
 {: .warning }
 > The Python and JS `hash` exports are **not** cross-language portable. They use different stringifiers (`json.dumps(..., default=str)` vs `JSON.stringify`) and the JS variant doesn't fold in `**kwargs`, so the same logical input produces different digests in each language. Use each language's `hash` only to align with that language's own cachetta.
-
-## In-Memory LRU
-
-Add an in-memory LRU layer that is checked before hitting disk:
-
-```python
-cache = Cachetta(
-    path='./cache.json',
-    lru_size=100,
-)
-```
-
-LRU entries respect the same `duration` as disk entries. The LRU is thread-safe for concurrent async access.
 
 ## Conditional Caching
 
@@ -424,7 +411,6 @@ logging.getLogger("cachetta").setLevel(logging.DEBUG)
 | `read` | `bool` | `True` | Allow reading from cache |
 | `write` | `bool` | `True` | Allow writing to cache |
 | `duration` | `timedelta` | 7 days | Cache TTL |
-| `lru_size` | `int` | `None` | Max in-memory LRU entries |
 | `condition` | `Callable` | `None` | Predicate to decide whether to cache |
 | `stale_duration` | `timedelta` | `None` | Time past expiry to serve stale data |
 | `allowed_pickle_types` | `set[type]` | `None` | Additional types to allow during deserialization |

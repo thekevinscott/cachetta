@@ -42,17 +42,32 @@ resolution while still passing it to the wrapped function. Plain functions
 keep all of their positional arguments. Because detection is automatic and
 correct, the flag is no longer needed and passing it raises `TypeError`.
 
+In the same release, the in-memory LRU layer has been removed entirely.
+It arrived in the initial code import with no design rationale, the
+library's sole known consumer never used it, and issues #79/#82/#83
+tracked broken behavior in it (stale entries surviving invalidation,
+inconsistent eviction under concurrent access, and values served past
+`duration` expiry). Rather than patch a layer nobody asked for, it's
+removed outright — see tracking issue #98. Cachetta remains a disk-backed
+cache; callers wanting an in-memory layer should add their own (e.g.
+`functools.lru_cache` composed around the decorator, or a process-local
+dict) since the right eviction/TTL semantics are application-specific.
+
 ### Required changes
 | Before | After |
 |--------|-------|
 | `@Cachetta(path=fn, skip_self=True)`<br>`def method(self, x): ...` | `@Cachetta(path=fn)`<br>`def method(self, x): ...`<br>_receiver excluded automatically_ |
 | `cache = Cachetta(path=..., skip_self=True)` | `cache = Cachetta(path=...)` |
 | `cache.copy(skip_self=True)` | `cache.copy()` |
+| `cache = Cachetta(path=..., lru_size=100)` | `cache = Cachetta(path=...)`<br>_no in-memory layer; every read hits disk_ |
 
 ### Deprecations removed
 - The `skip_self` field on `Cachetta` (and the `skip_self=` keyword to its
   constructor, `copy`, and per-decoration overrides). It was never
   deprecated with a warning; it is removed outright.
+- The `lru_size` field on `Cachetta`, the internal `_lru`/`_lru_lock`
+  state, and the `_lru_get`/`_lru_set` helpers. Also removed outright,
+  with no deprecation warning period.
 
 ### Behavior changes without code changes
 - Decorating an instance/class method now excludes the receiver from the
@@ -63,6 +78,10 @@ correct, the flag is no longer needed and passing it raises `TypeError`.
   almost never intentional (object identity is not stable across runs),
   but if you need per-instance partitioning, key on an explicit instance
   attribute via a callable `path`.
+- Every cache read now goes to disk, even for calls that would previously
+  have been served from the in-memory LRU. Throughput on tight read loops
+  against the same key will drop to disk I/O speed; layer your own
+  in-memory cache in front of `Cachetta` if that matters for your workload.
 
 ### Verification
 - After upgrading, confirm the receiver no longer reaches a callable path:
@@ -82,6 +101,15 @@ correct, the flag is no longer needed and passing it raises `TypeError`.
   ```
   Pre-upgrade (without `skip_self=True`) this raised `TypeError` because
   the lambda received `self` as an extra positional argument.
+- Confirm `lru_size` is gone:
+  ```python
+  from cachetta import Cachetta
+  try:
+      Cachetta(path="/tmp/x.dat", lru_size=10)
+      raise AssertionError("expected TypeError")
+  except TypeError:
+      pass  # expected: lru_size is no longer a valid keyword
+  ```
 
 ## v0.6 → v0.7
 

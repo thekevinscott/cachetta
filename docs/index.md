@@ -10,7 +10,7 @@ nav_order: 1
 
 File-based caching with the same API across TypeScript and Python. The name is a portmanteau of *cache* and *rosetta*.
 
-Both implementations share identical concepts -- configuration, decorators, read/write primitives, LRU, stale-while-revalidate -- differing only where language conventions require it (e.g. `snake_case` vs `camelCase`, `timedelta` vs milliseconds).
+Both implementations share identical concepts -- configuration, decorators, read/write primitives, stale-while-revalidate -- differing only where language conventions require it (e.g. `snake_case` vs `camelCase`, `timedelta` vs milliseconds), and in the features noted in the parity table below.
 
 ## Install
 
@@ -70,7 +70,7 @@ Cachetta uses native binary serialization in both languages -- **pickle** in Pyt
 | Decorator / function wrapper | Yes | Yes |
 | Sync API | Yes | Yes |
 | Async API | Yes (always) | Yes (separate primitives) |
-| In-memory LRU layer | Yes | Yes (thread-safe) |
+| In-memory LRU layer | Yes | No |
 | Stale-while-revalidate | Yes | Yes |
 | Conditional caching | Yes | Yes |
 | Auto cache keys (arg hashing) | Yes | Yes |
