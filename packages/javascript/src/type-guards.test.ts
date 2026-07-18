@@ -105,5 +105,18 @@ describe('type-guards', () => {
     it('should return true for config with lruSize', () => {
       expect(isPartialCacheConfig({ lruSize: 10 })).toBe(true);
     });
+
+    it('should return true for config with hashed only (issue #84)', () => {
+      expect(isPartialCacheConfig({ hashed: true })).toBe(true);
+    });
+  });
+});
+
+describe('Cachetta#call with hashed-only config (issue #84)', () => {
+  it('should treat cache({ hashed: true }) as config and produce a configured copy, not wrap it as a function', () => {
+    const base = new Cachetta({ path: './test.json' });
+    const result = base({ hashed: true }) as unknown as Cachetta;
+    expect(isCachetta(result)).toBe(true);
+    expect(result.hashed).toBe(true);
   });
 }); 

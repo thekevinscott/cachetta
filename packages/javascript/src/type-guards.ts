@@ -10,7 +10,8 @@ export const isPartialCacheConfig = (value: unknown): value is Partial<CacheConf
   'duration' in value ||
   'lruSize' in value ||
   'condition' in value ||
-  'staleDuration' in value
+  'staleDuration' in value ||
+  'hashed' in value
 );
 
 export const isCachetta = (value: unknown): value is Cachetta<any> => typeof value === 'function' && '__cacheBuddy__' in value && value.__cacheBuddy__ === true;

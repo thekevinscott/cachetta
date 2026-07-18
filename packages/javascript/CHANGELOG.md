@@ -52,6 +52,12 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   declarations." Declarations now land at the declared path.
 - Stopped shipping test `*.test.d.ts` declarations in the published
   tarball.
+- `isPartialCacheConfig` (used by `Cachetta.call`/`cache(...)` to decide
+  whether an argument is a config object or a function to wrap) omitted
+  `hashed` from its list of recognized keys. `cache({ hashed: true })`
+  therefore fell through and was mishandled as a function to wrap. The
+  guard now recognizes `hashed`, so a `hashed`-only config object produces
+  a configured copy as expected. (#84)
 
 ## [0.3.2] - 2026-04-27
 
