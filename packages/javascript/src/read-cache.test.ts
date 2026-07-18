@@ -7,6 +7,7 @@ import { writeCache, writeCacheSync } from './write-cache.js'; // eslint-disable
 import { Cachetta } from './Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta config object used as a plain-data fixture
 import { CachettaError, InvalidPathError } from './errors.js';
 import * as shouldUseReadCacheModule from './utils/should-use-read-cache.js'; // eslint-disable-line mock-isolation/collaborators -- namespace import spied via vi.spyOn rather than vi.mock
+import * as getLastUpdatedModule from './utils/get-last-updated.js'; // eslint-disable-line mock-isolation/collaborators -- namespace import spied via vi.spyOn rather than vi.mock
 
 
 describe('readCache', () => {
@@ -252,6 +253,16 @@ describe('readStaleCache', () => {
 
     expect(await readStaleCache(cache)).toBeNull();
   });
+
+  it('should return null when the file vanishes after the freshness check (stale path)', async () => {
+    const cachePath = join(tempDir, 'stale-vanishing.json');
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
+    // Report a valid, within-stale-window mtime even though no file exists on disk,
+    // so readCacheFile hits its ENOENT branch inside readStaleCache.
+    vi.spyOn(getLastUpdatedModule, 'getLastUpdated').mockResolvedValue(Date.now() - 5000);
+
+    expect(await readStaleCache(cache)).toBeNull();
+  });
 });
 
 describe('readStaleCacheSync', () => {
@@ -296,6 +307,16 @@ describe('readStaleCacheSync', () => {
 
   it('should return null when file does not exist', () => {
     const cache = new Cachetta({ path: join(tempDir, 'missing-sync.json'), duration: 1000, staleDuration: 5000 });
+    expect(readStaleCacheSync(cache)).toBeNull();
+  });
+
+  it('should return null when the file vanishes after the freshness check (stale path)', () => {
+    const cachePath = join(tempDir, 'stale-vanishing-sync.json');
+    const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 30000 });
+    // Report a valid, within-stale-window mtime even though no file exists on disk,
+    // so readCacheFileSync hits its ENOENT branch inside readStaleCacheSync.
+    vi.spyOn(getLastUpdatedModule, 'getLastUpdatedSync').mockReturnValue(Date.now() - 5000);
+
     expect(readStaleCacheSync(cache)).toBeNull();
   });
 });

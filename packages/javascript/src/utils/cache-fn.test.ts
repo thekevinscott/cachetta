@@ -3,7 +3,8 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { cacheFn, cacheFnSync } from './cache-fn.js';
 import { Cachetta } from '../Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta config object used as a plain-data fixture
-import { readCache, readStaleCache } from '../read-cache.js';
+import { readCacheOrMiss, readStaleCache } from '../read-cache.js';
+import { CACHE_MISS } from '../constants.js';
 import { writeCache } from '../write-cache.js';
 import type * as _readCacheTypes from '../read-cache.js';
 import type * as _writeCacheTypes from '../write-cache.js';
@@ -13,7 +14,7 @@ vi.mock('../read-cache.js', async () => {
   const actualReadCache = await import('../read-cache.js') as typeof _readCacheTypes;
   return {
     ...actualReadCache,
-    readCache: vi.fn() as unknown as typeof actualReadCache.readCache,
+    readCacheOrMiss: vi.fn() as unknown as typeof actualReadCache.readCacheOrMiss,
     readStaleCache: vi.fn() as unknown as typeof actualReadCache.readStaleCache,
   }
 });
@@ -37,13 +38,13 @@ describe('cacheFn', () => {
     const originalMethod = vi.fn().mockResolvedValue('original result');
     const cachedData = 'cached result';
 
-    vi.mocked(readCache).mockResolvedValue(cachedData);
+    vi.mocked(readCacheOrMiss).mockResolvedValue(cachedData);
 
     const wrappedFn = cacheFn(cache, originalMethod);
     const result = await wrappedFn.call({}, 'arg1', 'arg2');
 
     expect(result).toBe(cachedData);
-    expect(readCache).toHaveBeenCalledWith(cache, 'arg1', 'arg2');
+    expect(readCacheOrMiss).toHaveBeenCalledWith(cache, 'arg1', 'arg2');
     expect(originalMethod).not.toHaveBeenCalled();
     expect(writeCache).not.toHaveBeenCalled();
   });
@@ -52,14 +53,14 @@ describe('cacheFn', () => {
     const cache = new Cachetta({ path: './test-cache.json' });
     const originalMethod = vi.fn().mockResolvedValue('original result');
 
-    vi.mocked(readCache).mockResolvedValue(null);
+    vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
     vi.mocked(writeCache).mockResolvedValue(undefined);
 
     const wrappedFn = cacheFn(cache, originalMethod);
     const result = await wrappedFn.call({}, 'arg1', 'arg2');
 
     expect(result).toBe('original result');
-    expect(readCache).toHaveBeenCalledWith(cache, 'arg1', 'arg2');
+    expect(readCacheOrMiss).toHaveBeenCalledWith(cache, 'arg1', 'arg2');
     expect(originalMethod).toHaveBeenCalledWith('arg1', 'arg2');
     expect(writeCache).toHaveBeenCalledWith(cache, 'original result', 'arg1', 'arg2');
   });
@@ -68,7 +69,7 @@ describe('cacheFn', () => {
     const cache = new Cachetta({ path: './test-cache.json' });
     const originalMethod = vi.fn().mockReturnValue('sync result');
 
-    vi.mocked(readCache).mockResolvedValue(null);
+    vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
     vi.mocked(writeCache).mockResolvedValue(undefined);
 
     const wrappedFn = cacheFn(cache, originalMethod);
@@ -84,7 +85,7 @@ describe('cacheFn', () => {
     const context = { value: 'test' };
     const originalMethod = vi.fn().mockResolvedValue('result');
 
-    vi.mocked(readCache).mockResolvedValue(null);
+    vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
 
     const wrappedFn = cacheFn(cache, originalMethod);
     await wrappedFn.call(context, 'arg1');
@@ -98,7 +99,7 @@ describe('cacheFn', () => {
       const cache = new Cachetta({ path: './test-cache.json' });
       const originalMethod = vi.fn().mockResolvedValue('should not be called');
 
-      vi.mocked(readCache).mockResolvedValue(0);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(0);
 
       const wrappedFn = cacheFn(cache, originalMethod);
       const result = await wrappedFn.call({});
@@ -111,7 +112,7 @@ describe('cacheFn', () => {
       const cache = new Cachetta({ path: './test-cache.json' });
       const originalMethod = vi.fn().mockResolvedValue('should not be called');
 
-      vi.mocked(readCache).mockResolvedValue(false);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(false);
 
       const wrappedFn = cacheFn(cache, originalMethod);
       const result = await wrappedFn.call({});
@@ -124,7 +125,7 @@ describe('cacheFn', () => {
       const cache = new Cachetta({ path: './test-cache.json' });
       const originalMethod = vi.fn().mockResolvedValue('should not be called');
 
-      vi.mocked(readCache).mockResolvedValue('');
+      vi.mocked(readCacheOrMiss).mockResolvedValue('');
 
       const wrappedFn = cacheFn(cache, originalMethod);
       const result = await wrappedFn.call({});
@@ -133,11 +134,11 @@ describe('cacheFn', () => {
       expect(originalMethod).not.toHaveBeenCalled();
     });
 
-    it('should treat null as cache miss and call original method', async () => {
+    it('should call original method when readCacheOrMiss reports a miss', async () => {
       const cache = new Cachetta({ path: './test-cache.json' });
       const originalMethod = vi.fn().mockResolvedValue('fresh result');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
       const wrappedFn = cacheFn(cache, originalMethod);
@@ -145,6 +146,32 @@ describe('cacheFn', () => {
 
       expect(result).toBe('fresh result');
       expect(originalMethod).toHaveBeenCalled();
+    });
+
+    it('should return cached null without calling original method', async () => {
+      const cache = new Cachetta({ path: './test-cache.json' });
+      const originalMethod = vi.fn().mockResolvedValue('should not be called');
+
+      vi.mocked(readCacheOrMiss).mockResolvedValue(null);
+
+      const wrappedFn = cacheFn(cache, originalMethod);
+      const result = await wrappedFn.call({});
+
+      expect(result).toBeNull();
+      expect(originalMethod).not.toHaveBeenCalled();
+    });
+
+    it('should return cached undefined without calling original method', async () => {
+      const cache = new Cachetta({ path: './test-cache.json' });
+      const originalMethod = vi.fn().mockResolvedValue('should not be called');
+
+      vi.mocked(readCacheOrMiss).mockResolvedValue(undefined);
+
+      const wrappedFn = cacheFn(cache, originalMethod);
+      const result = await wrappedFn.call({});
+
+      expect(result).toBeUndefined();
+      expect(originalMethod).not.toHaveBeenCalled();
     });
   });
 
@@ -156,7 +183,7 @@ describe('cacheFn', () => {
       });
       const originalMethod = vi.fn().mockResolvedValue('valid');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
       const wrappedFn = cacheFn(cache, originalMethod);
@@ -173,7 +200,7 @@ describe('cacheFn', () => {
       });
       const originalMethod = vi.fn().mockResolvedValue(null);
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
       const wrappedFn = cacheFn(cache, originalMethod);
@@ -190,7 +217,7 @@ describe('cacheFn', () => {
       });
       const originalMethod = vi.fn().mockResolvedValue('result');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
 
       const wrappedFn = cacheFn(cache, originalMethod);
       const result = await wrappedFn.call({});
@@ -207,7 +234,7 @@ describe('cacheFn', () => {
       });
       const originalMethod = vi.fn().mockResolvedValue('fresh result');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(readStaleCache).mockResolvedValue('stale result');
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
@@ -224,7 +251,7 @@ describe('cacheFn', () => {
       });
       const originalMethod = vi.fn().mockResolvedValue('fresh result');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(readStaleCache).mockResolvedValue('stale result');
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
@@ -249,7 +276,7 @@ describe('cacheFn', () => {
       });
       const originalMethod = vi.fn().mockResolvedValue('fresh result');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(readStaleCache).mockResolvedValue('stale result');
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
@@ -273,7 +300,7 @@ describe('cacheFn', () => {
       });
       const originalMethod = vi.fn().mockResolvedValue('fresh result');
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(readStaleCache).mockResolvedValue(null);
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
@@ -303,7 +330,7 @@ describe('cacheFn', () => {
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
       // First call: stale hit triggers background refresh that will fail
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(readStaleCache).mockResolvedValue('stale data');
 
       const wrappedFn = cacheFn(cache, originalMethod);
@@ -314,7 +341,7 @@ describe('cacheFn', () => {
       await new Promise(r => setTimeout(r, 10));
 
       // Second call: non-stale (no stale data available), should run the function fresh
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(readStaleCache).mockResolvedValue(null);
 
       const result2 = await wrappedFn.call({});
@@ -332,7 +359,7 @@ describe('cacheFn', () => {
         () => new Promise<string>((resolve) => { resolveOriginal = resolve; }),
       );
 
-      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
       vi.mocked(writeCache).mockResolvedValue(undefined);
 
       const wrappedFn = cacheFn(cache, originalMethod);

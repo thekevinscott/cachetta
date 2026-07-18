@@ -40,6 +40,15 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   `MIGRATIONS.md` for details.
 
 ### Fixed
+- Cached functions that legitimately return `null` or `undefined` are now
+  treated as cache hits instead of misses. Previously, both the async and
+  sync wrappers (`cache(fn)` / `cache.wrapSync(fn)`) checked
+  `data != null` to decide whether a read was a hit, so a stored `null`/
+  `undefined` value was indistinguishable from "nothing cached" and the
+  wrapped function ran on every call. `readCache`/`readCacheSync` now
+  route through an internal `CACHE_MISS` sentinel (mirroring the existing
+  `LRU_MISS` pattern) so "file absent" and "cached nullish value" are no
+  longer conflated. (#78)
 - Restored the compiled `dist/` directory in the published tarball.
   Versions 0.3.1 and 0.3.2 shipped with `dist/` missing — the publish
   pipeline didn't build before packing — so installing those versions
