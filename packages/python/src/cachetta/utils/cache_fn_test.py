@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from cachetta.cachetta import Cachetta  # mock-enforce-ignore: real Cachetta config object used as a plain-data fixture
-from cachetta.utils.cache_fn import _should_cache, _in_flight
+from cachetta.utils.cache_fn import _should_cache, _in_flight, _fn_identity, _pop_if_current
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +23,14 @@ def clear_in_flight():
     _in_flight.clear()
     yield
     _in_flight.clear()
+
+
+def _key_for(fn, cache, *args, **kwargs):
+    """Build the same composite in-flight key the wrapper computes internally,
+    for tests that need to pre-register/inspect an in-flight entry."""
+    loop_id = id(asyncio.get_running_loop())
+    cache_key = str(cache._get_path(*args, **kwargs))
+    return (loop_id, _fn_identity(fn), cache_key)
 
 
 def _write_pickle(path, data):
@@ -160,22 +168,22 @@ def describe_async_wrapper_stale_while_revalidate():
                 stale_duration=timedelta(days=1),
             )
 
-            @cache
-            async def compute():
+            async def _compute():
                 return {"fresh": True}
 
-            cache_key = str(cache._get_path())
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
 
             # Pre-register an in-flight task so the scheduling branch is skipped.
             async def _noop():
                 await asyncio.sleep(0.05)
 
             sentinel_task = asyncio.ensure_future(_noop())
-            _in_flight[cache_key] = sentinel_task
+            _in_flight[key] = sentinel_task
             try:
                 result = await compute()
             finally:
-                _in_flight.pop(cache_key, None)
+                _in_flight.pop(key, None)
                 await sentinel_task
 
             assert result == {"stale": True}
@@ -196,18 +204,18 @@ def describe_async_wrapper_stale_while_revalidate():
 
             refreshed = asyncio.Event()
 
-            @cache
-            async def compute():
+            async def _compute():
                 refreshed.set()
                 return {"fresh": True}
 
-            cache_key = str(cache._get_path())
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
             result = await compute()
             assert result == {"stale": True}
 
             # Let the background task run to completion.
             await asyncio.wait_for(refreshed.wait(), timeout=1)
-            task = _in_flight.get(cache_key)
+            task = _in_flight.get(key)
             if task is not None:
                 await task
 
@@ -230,17 +238,17 @@ def describe_async_wrapper_stale_while_revalidate():
 
             ran = asyncio.Event()
 
-            @cache
-            async def compute():
+            async def _compute():
                 ran.set()
                 raise RuntimeError("boom in refresh")
 
-            cache_key = str(cache._get_path())
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
             result = await compute()
             assert result == {"stale": True}
 
             await asyncio.wait_for(ran.wait(), timeout=1)
-            task = _in_flight.get(cache_key)
+            task = _in_flight.get(key)
             if task is not None:
                 # Should complete without raising despite the fn error.
                 await task
@@ -353,22 +361,22 @@ def describe_async_wrapper_core():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(path=f"{tmpdir}/dedup.json")  # no stale_duration
 
-            @cache
-            async def compute():
+            async def _compute():
                 return {"computed": True}
 
-            cache_key = str(cache._get_path())
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
 
             async def _inflight():
                 await asyncio.sleep(0.05)
                 return {"inflight": True}
 
             task = asyncio.ensure_future(_inflight())
-            _in_flight[cache_key] = task
+            _in_flight[key] = task
             try:
                 result = await compute()
             finally:
-                _in_flight.pop(cache_key, None)
+                _in_flight.pop(key, None)
                 await task
 
             assert result == {"inflight": True}
@@ -387,15 +395,15 @@ def describe_async_wrapper_core():
                 stale_duration=timedelta(days=1),
             )
 
-            @cache
-            async def compute():
+            async def _compute():
                 return {"refreshed": True}
 
-            cache_key = str(cache._get_path())
+            compute = cache(_compute)
+            key = _key_for(_compute, cache)
             result = await compute()
             assert result == {"stale": True}
 
-            task = _in_flight.get(cache_key)
+            task = _in_flight.get(key)
             if task is not None:
                 await task
 
@@ -429,3 +437,118 @@ def describe_async_wrapper_core():
 
             with pytest.raises(ValueError, match="async boom"):
                 await compute()
+
+
+def describe_pop_if_current():
+    async def test_leaves_registry_untouched_when_key_now_points_at_another_task():
+        """A stale done-callback firing after the key has been claimed by a
+        newer task must not evict that newer task from the registry."""
+        key = (0, (0, 0), "path")
+
+        async def _noop():
+            return None
+
+        stale_task = asyncio.ensure_future(_noop())
+        current_task = asyncio.ensure_future(_noop())
+        _in_flight[key] = current_task
+
+        _pop_if_current(key, stale_task)
+
+        assert _in_flight[key] is current_task
+        await stale_task
+        await current_task
+
+    async def test_removes_entry_when_key_still_points_at_this_task():
+        key = (0, (0, 0), "path")
+
+        async def _noop():
+            return None
+
+        task = asyncio.ensure_future(_noop())
+        _in_flight[key] = task
+
+        _pop_if_current(key, task)
+
+        assert key not in _in_flight
+        await task
+
+
+def describe_in_flight_scoping():
+    """Regression coverage for issue #80: the in-flight dedup registry must
+    not collide across unrelated decorated functions that happen to resolve
+    to the same cache path, and must never hand a caller a task bound to a
+    different (e.g. already-closed) event loop.
+    """
+
+    async def test_two_instances_same_path_do_not_dedupe_across_functions():
+        """Two different Cachetta instances, wrapping two different
+        functions, that happen to resolve to the same cache path must not
+        share in-flight results. Before the fix, the registry was keyed
+        purely on the resolved path string, so the second call would await
+        the first function's still-running task and get back its result."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = f"{tmpdir}/shared.json"
+            cache_a = Cachetta(path=path, write=False, read=False)
+            cache_b = Cachetta(path=path, write=False, read=False)
+            fn_a_started = asyncio.Event()
+            release_fn_a = asyncio.Event()
+
+            @cache_a
+            async def fn_a():
+                fn_a_started.set()
+                await release_fn_a.wait()
+                return {"who": "a"}
+
+            @cache_b
+            async def fn_b():
+                return {"who": "b"}
+
+            task_a = asyncio.ensure_future(fn_a())
+            await asyncio.wait_for(fn_a_started.wait(), timeout=1)
+
+            # fn_a's call is still in-flight (registered) when fn_b is called
+            # against the same resolved path via a different instance/function.
+            result_b = await asyncio.wait_for(fn_b(), timeout=1)
+
+            release_fn_a.set()
+            result_a = await asyncio.wait_for(task_a, timeout=1)
+
+            assert result_b == {"who": "b"}
+            assert result_a == {"who": "a"}
+
+    def test_cross_loop_call_does_not_raise_runtime_error():
+        """A call left in-flight when its event loop is torn down must not
+        crash a later call made against the same key on a fresh loop. Before
+        the fix, the leftover (not-done) task from the closed loop would be
+        found in the registry and handed to ``asyncio.shield`` on the new
+        loop, raising a ``RuntimeError`` (a task/future bound to a foreign
+        event loop can't be awaited from another loop)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = Cachetta(path=f"{tmpdir}/cross-loop.json", write=False, read=False)
+            calls = 0
+
+            @cache
+            async def compute():
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    # Never resolves before the first loop is torn down below.
+                    await asyncio.Event().wait()
+                return {"call": calls}
+
+            async def _start_and_abandon():
+                task = asyncio.ensure_future(compute())
+                await asyncio.sleep(0.01)  # let it register as in-flight
+                return task
+
+            loop1 = asyncio.new_event_loop()
+            try:
+                abandoned_task = loop1.run_until_complete(_start_and_abandon())
+                assert not abandoned_task.done()
+            finally:
+                loop1.close()
+
+            # A fresh loop, same key: must run independently rather than
+            # raising when it encounters the abandoned first-loop task.
+            result = asyncio.run(compute())
+            assert result == {"call": 2}
