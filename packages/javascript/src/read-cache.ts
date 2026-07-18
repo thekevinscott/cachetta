@@ -1,5 +1,5 @@
 import type { Cachetta } from './Cachetta.js';
-import { LRU_MISS } from './constants.js';
+import { LRU_MISS, CACHE_MISS } from './constants.js';
 import { promises as fs, readFileSync } from 'fs';
 import { deserialize } from 'v8';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
@@ -9,37 +9,42 @@ import { logger } from './utils/logger.js';
 import { isCachetta } from './type-guards.js';
 import { CachettaError } from './errors.js';
 
-/** Read raw data from a cache file, ignoring expiry. Returns null on any failure. */
-async function readCacheFile<T>(cachePath: string): Promise<T | null> {
+/** Read raw data from a cache file, ignoring expiry. Returns CACHE_MISS on any failure (file absent or unreadable). */
+async function readCacheFile<T>(cachePath: string): Promise<T | typeof CACHE_MISS> {
   try {
     const buffer = await fs.readFile(cachePath);
     return deserialize(buffer) as T;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
+      return CACHE_MISS;
     } else {
       logger.error(`Read error: ${error}`);
-      return null;
+      return CACHE_MISS;
     }
   }
 }
 
 /** Sync version of readCacheFile. */
-function readCacheFileSync<T>(cachePath: string): T | null {
+function readCacheFileSync<T>(cachePath: string): T | typeof CACHE_MISS {
   try {
     const buffer = readFileSync(cachePath);
     return deserialize(buffer) as T;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
+      return CACHE_MISS;
     } else {
       logger.error(`Read error: ${error}`);
-      return null;
+      return CACHE_MISS;
     }
   }
 }
 
-export async function readCache<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]): Promise<T | null> {
+/**
+ * Internal variant of readCache that distinguishes "no cached value" from a
+ * cached value that happens to be null/undefined, via the CACHE_MISS sentinel.
+ * @internal
+ */
+export async function readCacheOrMiss<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]): Promise<T | typeof CACHE_MISS> {
   if (!isCachetta(cacheBuddy)) {
     throw new CachettaError(`Invalid value provided, you must provide an instance of Cachetta: ${cacheBuddy}`)
   }
@@ -57,18 +62,19 @@ export async function readCache<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]
   if (await shouldUseReadCache(cacheBuddy, cachePath)) {
     logger.debug(`Using cache at ${cachePath}`);
     const result = await readCacheFile<T>(cachePath);
-    if (result !== null) {
+    if (result !== CACHE_MISS) {
       logger.debug(`Used cache at ${cachePath}`);
       cacheBuddy._lruSet(cachePath, result);
     }
     return result;
   } else {
     logger.debug("cache.read is false, skipping cache");
-    return null;
+    return CACHE_MISS;
   }
 }
 
-export function readCacheSync<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]): T | null {
+/** Sync variant of readCacheOrMiss. @internal */
+export function readCacheSyncOrMiss<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]): T | typeof CACHE_MISS {
   if (!isCachetta(cacheBuddy)) {
     throw new CachettaError(`Invalid value provided, you must provide an instance of Cachetta: ${cacheBuddy}`)
   }
@@ -85,15 +91,25 @@ export function readCacheSync<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]):
   if (shouldUseReadCacheSync(cacheBuddy, cachePath)) {
     logger.debug(`Using cache at ${cachePath}`);
     const result = readCacheFileSync<T>(cachePath);
-    if (result !== null) {
+    if (result !== CACHE_MISS) {
       logger.debug(`Used cache at ${cachePath}`);
       cacheBuddy._lruSet(cachePath, result);
     }
     return result;
   } else {
     logger.debug("cache.read is false, skipping cache");
-    return null;
+    return CACHE_MISS;
   }
+}
+
+export async function readCache<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]): Promise<T | null> {
+  const result = await readCacheOrMiss<T>(cacheBuddy, ...args);
+  return result === CACHE_MISS ? null : result;
+}
+
+export function readCacheSync<T>(cacheBuddy: Cachetta<any>, ...args: unknown[]): T | null {
+  const result = readCacheSyncOrMiss<T>(cacheBuddy, ...args);
+  return result === CACHE_MISS ? null : result;
 }
 
 /**
@@ -116,7 +132,8 @@ export async function readStaleCache<T>(cacheBuddy: Cachetta<any>, ...args: unkn
 
   if (isExpired && isWithinStaleWindow) {
     logger.debug(`Returning stale cache for ${cachePath} (age: ${ageMs}ms)`);
-    return readCacheFile<T>(cachePath);
+    const result = await readCacheFile<T>(cachePath);
+    return result === CACHE_MISS ? null : result;
   }
 
   return null;
@@ -138,7 +155,8 @@ export function readStaleCacheSync<T>(cacheBuddy: Cachetta<any>, ...args: unknow
 
   if (isExpired && isWithinStaleWindow) {
     logger.debug(`Returning stale cache for ${cachePath} (age: ${ageMs}ms)`);
-    return readCacheFileSync<T>(cachePath);
+    const result = readCacheFileSync<T>(cachePath);
+    return result === CACHE_MISS ? null : result;
   }
 
   return null;

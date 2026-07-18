@@ -241,6 +241,31 @@ const cache = new Cachetta({
 });
 ```
 
+## Caching `null` and `undefined`
+
+A wrapped function that legitimately returns `null` or `undefined` is
+cached like any other value — the cached result is served on subsequent
+calls instead of re-running the function:
+
+```javascript
+const cache = new Cachetta({ path: './cache.json' });
+
+let calls = 0;
+const cachedLookup = cache(async (id) => {
+  calls++;
+  return await lookupThatCanReturnNull(id); // e.g. returns null
+});
+
+await cachedLookup('missing-id'); // calls === 1, returns null
+await cachedLookup('missing-id'); // calls still 1 (cache hit), returns null
+```
+
+Internally, "no cached value" (file absent, or `read: false`) and "cached
+value is `null`/`undefined`" are distinguished via a dedicated miss
+sentinel, so a stored nullish value is never mistaken for a cache miss.
+If you want a `null`/`undefined` result to be treated as *not worth
+caching*, use `condition` (see [Conditional Caching](#conditional-caching)).
+
 ## Stale-While-Revalidate
 
 Return expired data immediately while refreshing in the background:

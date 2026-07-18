@@ -1,5 +1,6 @@
 import type { Cachetta } from "../Cachetta.js";
-import { readCache, readStaleCache, readCacheSync, readStaleCacheSync } from "../read-cache.js";
+import { readCacheOrMiss, readStaleCache, readCacheSyncOrMiss, readStaleCacheSync } from "../read-cache.js";
+import { CACHE_MISS } from "../constants.js";
 import type { CachableFunction, CachableFunctionSync } from "../types.js";
 import { writeCache, writeCacheSync } from "../write-cache.js";
 import { logger } from "./logger.js";
@@ -11,8 +12,8 @@ const backgroundRefreshes = new Set<string>();
 
 export const cacheFn = (cache: Cachetta<any>, originalMethod: CachableFunction) => {
   async function wrapper(this: ThisParameterType<typeof originalMethod>, ...args: Parameters<typeof originalMethod>) {
-    const data = await readCache(cache, ...args);
-    if (data != null) {
+    const data = await readCacheOrMiss(cache, ...args);
+    if (data !== CACHE_MISS) {
       return data;
     }
 
@@ -68,8 +69,8 @@ export const cacheFn = (cache: Cachetta<any>, originalMethod: CachableFunction) 
 
 export const cacheFnSync = (cache: Cachetta<any>, originalMethod: CachableFunctionSync) => {
   function wrapper(this: any, ...args: unknown[]) {
-    const data = readCacheSync(cache, ...args);
-    if (data != null) {
+    const data = readCacheSyncOrMiss(cache, ...args);
+    if (data !== CACHE_MISS) {
       return data;
     }
 
