@@ -8,6 +8,13 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Fixed
+- In-flight request deduplication is now scoped to each wrapped function
+  instead of shared globally by resolved cache path. Previously, two
+  separate `Cachetta` instances wrapping different functions but resolving
+  to the same cache path could dedup against each other's in-flight calls,
+  causing one caller to receive the other's (wrong) result.
+
 ### Added
 - Public `hash(...args)` export. Returns the same 16-char hex digest the
   auto-keyed cache path uses internally, so consumers can build custom

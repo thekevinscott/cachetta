@@ -4,12 +4,14 @@ import type { CachableFunction, CachableFunctionSync } from "../types.js";
 import { writeCache, writeCacheSync } from "../write-cache.js";
 import { logger } from "./logger.js";
 
-// In-flight promise deduplication keyed by resolved cache path (primary callers only)
-const inFlight = new Map<string, Promise<unknown>>();
-// Background refresh tracking (separate from inFlight so primary callers don't pick these up)
-const backgroundRefreshes = new Set<string>();
-
 export const cacheFn = (cache: Cachetta<any>, originalMethod: CachableFunction) => {
+  // In-flight promise deduplication keyed by resolved cache path (primary callers only).
+  // Scoped to this wrapper instance so two Cachetta instances (even over the same
+  // resolved path) never dedup against each other's calls.
+  const inFlight = new Map<string, Promise<unknown>>();
+  // Background refresh tracking (separate from inFlight so primary callers don't pick these up)
+  const backgroundRefreshes = new Set<string>();
+
   async function wrapper(this: ThisParameterType<typeof originalMethod>, ...args: Parameters<typeof originalMethod>) {
     const data = await readCache(cache, ...args);
     if (data != null) {
