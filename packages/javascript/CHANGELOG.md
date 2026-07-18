@@ -9,6 +9,12 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
 ## [Unreleased]
 
 ### Fixed
+- Closed a stale-while-revalidate race where a background refresh and a
+  primary computation for the same key could run concurrently, duplicating
+  the underlying call. Background refreshes now register in the same
+  in-flight map as primary calls, so a primary caller arriving mid-refresh
+  joins the running refresh (and now observes its result — including its
+  rejection, where it previously would have recomputed).
 - In-flight request deduplication is now scoped to each wrapped function
   instead of shared globally by resolved cache path. Previously, two
   separate `Cachetta` instances wrapping different functions but resolving
