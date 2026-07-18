@@ -6,12 +6,12 @@ import { writeCache, writeCacheSync } from "../write-cache.js";
 import { logger } from "./logger.js";
 
 export const cacheFn = (cache: Cachetta<any>, originalMethod: CachableFunction) => {
-  // In-flight promise deduplication keyed by resolved cache path (primary callers only).
-  // Scoped to this wrapper instance so two Cachetta instances (even over the same
-  // resolved path) never dedup against each other's calls.
+  // In-flight computation dedup keyed by resolved cache path. Both primary calls
+  // and background SWR refreshes register here so the two paths see each other and
+  // never compute the same key concurrently. Scoped to this wrapper instance so two
+  // Cachetta instances (even over the same resolved path) never dedup against
+  // each other's calls.
   const inFlight = new Map<string, Promise<unknown>>();
-  // Background refresh tracking (separate from inFlight so primary callers don't pick these up)
-  const backgroundRefreshes = new Set<string>();
 
   async function wrapper(this: ThisParameterType<typeof originalMethod>, ...args: Parameters<typeof originalMethod>) {
     const data = await readCacheOrMiss(cache, ...args);
@@ -21,50 +21,41 @@ export const cacheFn = (cache: Cachetta<any>, originalMethod: CachableFunction) 
 
     const cacheKey = cache._getPath(...args);
 
+    // Registers the computation in inFlight synchronously with the caller's guard
+    // check, so no other caller can start a duplicate before it lands in the map.
+    const startComputation = () => {
+      const promise = (async () => {
+        const result = await originalMethod.apply(this, args);
+        if (!cache.condition || cache.condition(result)) {
+          await writeCache(cache, result, ...args);
+        }
+        return result;
+      })();
+      inFlight.set(cacheKey, promise);
+      // Attached before any caller awaits, so cleanup runs ahead of resumed
+      // callers and never deletes a successor's entry.
+      promise.finally(() => {
+        inFlight.delete(cacheKey);
+      }).catch(() => {});
+      return promise;
+    };
+
     // Stale-while-revalidate: return stale data and refresh in background
     if (cache.staleDuration) {
       const staleData = await readStaleCache(cache, ...args);
       if (staleData != null) {
-        // Fire-and-forget background revalidation (only if not already refreshing)
-        if (!backgroundRefreshes.has(cacheKey) && !inFlight.has(cacheKey)) {
-          backgroundRefreshes.add(cacheKey);
-          (async () => {
-            try {
-              const result = await originalMethod.apply(this, args);
-              if (!cache.condition || cache.condition(result)) {
-                await writeCache(cache, result, ...args);
-              }
-            } catch (error) {
-              logger.error(`Background revalidation failed for ${cacheKey}: ${error}`);
-            } finally {
-              backgroundRefreshes.delete(cacheKey);
-            }
-          })();
+        // Fire-and-forget background revalidation (only if not already computing)
+        if (!inFlight.has(cacheKey)) {
+          startComputation().catch((error) => {
+            logger.error(`Background revalidation failed for ${cacheKey}: ${error}`);
+          });
         }
         return staleData;
       }
     }
 
-    // If there's already an in-flight call for this path, return it
-    const existing = inFlight.get(cacheKey);
-    if (existing) {
-      return existing;
-    }
-
-    const promise = (async () => {
-      const result = await originalMethod.apply(this, args);
-      if (!cache.condition || cache.condition(result)) {
-        await writeCache(cache, result, ...args);
-      }
-      return result;
-    })();
-
-    inFlight.set(cacheKey, promise);
-    try {
-      return await promise;
-    } finally {
-      inFlight.delete(cacheKey);
-    }
+    // Join any in-flight computation for this path (primary or background refresh)
+    return inFlight.get(cacheKey) ?? startComputation();
   }
   return wrapper;
 }

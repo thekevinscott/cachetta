@@ -365,6 +365,67 @@ describe('cacheFn', () => {
       expect(writeCache).toHaveBeenCalled();
     });
 
+    it('should not double-compute when a primary call arrives during a background refresh', async () => {
+      const cache = new Cachetta({
+        path: './test-cache.json',
+        staleDuration: 30000,
+      });
+
+      let resolveRefresh: (value: string) => void = () => {};
+      const originalMethod = vi.fn(() => new Promise<string>((resolve) => { resolveRefresh = resolve; }));
+
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
+      vi.mocked(readStaleCache).mockResolvedValue('stale data');
+      vi.mocked(writeCache).mockResolvedValue(undefined);
+
+      const wrappedFn = cacheFn(cache, originalMethod);
+
+      // Stale hit spawns a background refresh that is still pending.
+      const result1 = await wrappedFn.call({});
+      expect(result1).toBe('stale data');
+      expect(originalMethod).toHaveBeenCalledTimes(1);
+
+      // A primary call (no stale data left) arrives while the refresh is in flight.
+      vi.mocked(readStaleCache).mockResolvedValue(null);
+      const pending = wrappedFn.call({});
+      await vi.waitFor(() => expect(originalMethod).toHaveBeenCalledTimes(1));
+
+      resolveRefresh('fresh result');
+      expect(await pending).toBe('fresh result');
+      // The primary call joined the background refresh instead of recomputing.
+      expect(originalMethod).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not spawn a background refresh while a primary computation is in flight', async () => {
+      const cache = new Cachetta({
+        path: './test-cache.json',
+        staleDuration: 30000,
+      });
+
+      let resolvePrimary: (value: string) => void = () => {};
+      const originalMethod = vi.fn(() => new Promise<string>((resolve) => { resolvePrimary = resolve; }));
+
+      vi.mocked(readCacheOrMiss).mockResolvedValue(CACHE_MISS);
+      vi.mocked(readStaleCache).mockResolvedValue(null);
+      vi.mocked(writeCache).mockResolvedValue(undefined);
+
+      const wrappedFn = cacheFn(cache, originalMethod);
+
+      // Primary computation starts (miss, no stale data).
+      const pendingPrimary = wrappedFn.call({});
+      await vi.waitFor(() => expect(originalMethod).toHaveBeenCalledTimes(1));
+
+      // A stale hit arrives while the primary is in flight: no second computation.
+      vi.mocked(readStaleCache).mockResolvedValue('stale data');
+      const result = await wrappedFn.call({});
+      expect(result).toBe('stale data');
+      expect(originalMethod).toHaveBeenCalledTimes(1);
+
+      resolvePrimary('fresh result');
+      expect(await pendingPrimary).toBe('fresh result');
+      expect(originalMethod).toHaveBeenCalledTimes(1);
+    });
+
     it('should not let non-stale caller pick up a failing background refresh', async () => {
       const cache = new Cachetta({
         path: './test-cache.json',
