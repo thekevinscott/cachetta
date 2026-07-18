@@ -226,6 +226,60 @@ describe('cacheFn', () => {
     });
   });
 
+  describe('in-flight dedup scoping', () => {
+    it('should not share in-flight promises between two instances wrapping different functions over the same path', async () => {
+      const cacheA = new Cachetta({ path: './same-path.json' });
+      const cacheB = new Cachetta({ path: './same-path.json' });
+
+      let resolveA: (value: string) => void = () => {};
+      const originalMethodA = vi.fn(() => new Promise<string>((resolve) => { resolveA = resolve; }));
+      const originalMethodB = vi.fn().mockResolvedValue('result-b');
+
+      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(writeCache).mockResolvedValue(undefined);
+
+      const wrappedA = cacheFn(cacheA, originalMethodA);
+      const wrappedB = cacheFn(cacheB, originalMethodB);
+
+      // Start A's call but don't resolve it yet - it will be "in flight" for the shared path.
+      const pendingA = wrappedA.call({});
+      await vi.waitFor(() => expect(originalMethodA).toHaveBeenCalled());
+
+      // B should not receive A's in-flight promise just because the path collides.
+      const resultB = await wrappedB.call({});
+
+      expect(resultB).toBe('result-b');
+      expect(originalMethodB).toHaveBeenCalled();
+
+      resolveA('result-a');
+      await pendingA;
+    });
+
+    it('should still dedup concurrent calls to a single wrapper', async () => {
+      const cache = new Cachetta({ path: './same-path.json' });
+
+      let resolveOriginal: (value: string) => void = () => {};
+      const originalMethod = vi.fn(() => new Promise<string>((resolve) => { resolveOriginal = resolve; }));
+
+      vi.mocked(readCache).mockResolvedValue(null);
+      vi.mocked(writeCache).mockResolvedValue(undefined);
+
+      const wrappedFn = cacheFn(cache, originalMethod);
+
+      const call1 = wrappedFn.call({});
+      const call2 = wrappedFn.call({});
+
+      await vi.waitFor(() => expect(originalMethod).toHaveBeenCalled());
+      resolveOriginal('shared result');
+
+      const [result1, result2] = await Promise.all([call1, call2]);
+
+      expect(result1).toBe('shared result');
+      expect(result2).toBe('shared result');
+      expect(originalMethod).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('stale-while-revalidate', () => {
     it('should return stale data when available', async () => {
       const cache = new Cachetta({
