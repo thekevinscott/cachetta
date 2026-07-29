@@ -121,8 +121,17 @@ def describe_async_decorated_functions():
             result = await get_data()
             assert result == {"version": 1}
 
-            # Wait for background refresh
-            await asyncio.sleep(0.2)
+            # Wait for background refresh: poll instead of a fixed sleep — on
+            # a cold CI runner the first asyncio.to_thread call can outlast
+            # any fixed budget. The cache write is atomic (os.replace), so
+            # polling reads see either the old or the new value, never a
+            # partial file.
+            deadline = time() + 5.0
+            while time() < deadline:
+                with open(cache_path, "rb") as f:
+                    if pickle.load(f) == {"version": 2}:
+                        break
+                await asyncio.sleep(0.01)
             assert call_count == 1
 
             with open(cache_path, "rb") as f:

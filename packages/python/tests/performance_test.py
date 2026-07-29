@@ -1,6 +1,7 @@
 import asyncio
 import pickle
 import tempfile
+from importlib import import_module
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,13 @@ from cachetta.cachetta import Cachetta
 from cachetta.read_cache import read_cache
 from cachetta.write_cache import write_cache, _created_dirs
 from cachetta.utils.cache_fn import _in_flight
+
+# Resolved via import_module because these module names are shadowed by
+# same-named functions re-exported from their packages, which breaks string
+# `patch("…")` targets on Python 3.10's dotted-path lookup.
+_read_cache_module = import_module("cachetta.read_cache")
+_write_cache_module = import_module("cachetta.write_cache")
+_get_last_updated_module = import_module("cachetta.utils.get_last_updated")
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +52,7 @@ def describe_directory_caching():
             cache_path = Path(tmpdir) / "test.json"
             cache = Cachetta(path=str(cache_path))
 
-            with patch("cachetta.write_cache.Path.mkdir") as mock_mkdir:
+            with patch.object(_write_cache_module.Path, "mkdir") as mock_mkdir:
                 # Write twice to same directory
                 write_cache(cache, {"data": 1})
                 write_cache(cache, {"data": 2})
@@ -68,7 +76,7 @@ def describe_eafp_get_last_updated():
     def test_does_not_call_exists(self=None):
         """EAFP pattern means we should not call os.path.exists."""
         from cachetta.utils.get_last_updated import get_last_updated
-        with patch("cachetta.utils.get_last_updated.os.path.exists") as mock_exists:
+        with patch.object(_get_last_updated_module.os.path, "exists") as mock_exists:
             get_last_updated("/nonexistent/file.json")
             mock_exists.assert_not_called()
 
@@ -83,7 +91,7 @@ def describe_pickle_loading():
 
             cache = Cachetta(path=str(cache_path))
 
-            with patch("cachetta.read_cache.safe_load", return_value={"streaming": True}) as mock_load:
+            with patch.object(_read_cache_module, "safe_load", return_value={"streaming": True}) as mock_load:
                 with read_cache(cache) as _data:
                     pass
                 mock_load.assert_called_once()

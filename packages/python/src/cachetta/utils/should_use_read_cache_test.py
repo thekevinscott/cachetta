@@ -1,14 +1,21 @@
 from datetime import timedelta
+from importlib import import_module
 from unittest.mock import patch, Mock
 import pytest
 from cachetta.cachetta import Cachetta  # mock-enforce-ignore: real Cachetta config object drives should_use_read_cache
 from cachetta.utils.should_use_read_cache import should_use_read_cache
 
+# Resolved via import_module because `cachetta.utils` re-exports a function
+# named `should_use_read_cache` that shadows the module of the same name,
+# which breaks string `patch("…")` targets on Python 3.10's dotted-path
+# lookup.
+_should_use_read_cache_module = import_module("cachetta.utils.should_use_read_cache")
+
 
 @pytest.fixture(autouse=True)
 def mock_get_last_updated():
-    with patch(
-        "cachetta.utils.should_use_read_cache.get_last_updated", new_callable=Mock
+    with patch.object(
+        _should_use_read_cache_module, "get_last_updated", new_callable=Mock
     ) as mock:
         mock.return_value = 123
         yield mock
@@ -16,8 +23,8 @@ def mock_get_last_updated():
 
 @pytest.fixture(autouse=True)
 def mock_is_cache_expired():
-    with patch(
-        "cachetta.utils.should_use_read_cache.is_cache_expired", new_callable=Mock
+    with patch.object(
+        _should_use_read_cache_module, "is_cache_expired", new_callable=Mock
     ) as mock:
         mock.return_value = False
         yield mock

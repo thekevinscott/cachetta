@@ -1,5 +1,6 @@
 import pickle
 from datetime import timedelta
+from importlib import import_module
 from unittest.mock import patch, Mock
 import pytest
 from pathlib import Path
@@ -14,10 +15,16 @@ from cachetta.read_cache import (
     _blocking_read_impl,
 )
 
+# Resolved via import_module because these module names are shadowed by
+# same-named functions re-exported from their packages, which breaks string
+# `patch("…")` targets on Python 3.10's dotted-path lookup.
+_read_cache_module = import_module("cachetta.read_cache")
+_should_use_read_cache_module = import_module("cachetta.utils.should_use_read_cache")
+
 
 @pytest.fixture(autouse=True)
 def mock_should_use_read_cache():
-    with patch("cachetta.utils.should_use_read_cache.should_use_read_cache", new_callable=Mock) as mock:
+    with patch.object(_should_use_read_cache_module, "should_use_read_cache", new_callable=Mock) as mock:
         mock.return_value = True
         yield mock
 
@@ -134,7 +141,7 @@ def describe_read_cache():
         """should_use_read_cache passes but the file is gone when opened."""
         with tempfile.TemporaryDirectory() as tmpdir:
             missing = Path(tmpdir) / "missing.dat"
-            with patch("cachetta.read_cache.should_use_read_cache", return_value=True):
+            with patch.object(_read_cache_module, "should_use_read_cache", return_value=True):
                 with read_cache(MockCache(path=missing)) as d:
                     pass
             assert d is None
@@ -144,7 +151,7 @@ def describe_read_cache():
             temp_file = Path(tmpdir) / "unsafe.dat"
             with open(temp_file, "wb") as f:
                 pickle.dump(_Unsafe(), f)
-            with patch("cachetta.read_cache.should_use_read_cache", return_value=True):
+            with patch.object(_read_cache_module, "should_use_read_cache", return_value=True):
                 with read_cache(MockCache(path=temp_file)) as d:
                     pass
             assert d is None
@@ -255,13 +262,13 @@ def describe_async_read_cache():
             temp_file = Path(tmpdir) / "ok.dat"
             with open(temp_file, "wb") as f:
                 pickle.dump({"async": True}, f)
-            with patch("cachetta.read_cache.should_use_read_cache", return_value=True):
+            with patch.object(_read_cache_module, "should_use_read_cache", return_value=True):
                 async with async_read_cache(MockCache(path=temp_file)) as d:
                     pass
             assert d == {"async": True}
 
     async def test_it_yields_none_when_should_not_use_cache():
-        with patch("cachetta.read_cache.should_use_read_cache", return_value=False):
+        with patch.object(_read_cache_module, "should_use_read_cache", return_value=False):
             async with async_read_cache(MockCache(path="foo")) as d:
                 pass
         assert d is None

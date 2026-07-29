@@ -45,6 +45,10 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   literal-path semantics.
 
 ### Changed
+- Lowered the supported Python floor from 3.12 to 3.10: `requires-python`
+  is now `>= 3.10`, so the package installs on Python 3.10 and 3.11. No
+  API changes — the source already used nothing newer than 3.10 syntax.
+  Python 3.9 (EOL) remains unsupported. (#106)
 - Both the source distribution and the installed wheel now ship `docs/`
   **recursively**, so markdown files under nested subdirectories (e.g.
   `docs/llm/python/index.md`) land in `site-packages/cachetta/docs/`

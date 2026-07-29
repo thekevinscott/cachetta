@@ -4,7 +4,7 @@ File-based caching for Python. Part of the [Cachetta](https://github.com/thekevi
 
 Three doc layers: this README (overview), the [`docs/`](./docs/) folder bundled with this package, and the [hosted docs site](https://thekevinscott.github.io/cachetta/python). Each `##` below mirrors a section in [`docs/python.md`](./docs/python.md).
 
-Requires Python 3.12+.
+Requires Python 3.10+.
 
 ## Install
 
