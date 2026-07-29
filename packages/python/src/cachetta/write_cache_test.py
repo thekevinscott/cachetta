@@ -1,5 +1,6 @@
 import pickle
 import pytest
+from importlib import import_module
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
@@ -12,6 +13,12 @@ from cachetta.write_cache import (
     _created_dirs,
     _CREATED_DIRS_MAX,
 )
+
+# Resolved via import_module because `cachetta` re-exports a function named
+# `write_cache` that shadows the module of the same name, which breaks string
+# `patch("cachetta.write_cache.…")` targets on Python 3.10's dotted-path
+# lookup.
+_write_cache_module = import_module("cachetta.write_cache")
 
 
 class MockCache(Cachetta):
@@ -181,7 +188,7 @@ def describe_write_cache():
             cache = MockCache(path=str(cache_path))
             cache.write = True
 
-            with patch("cachetta.write_cache.os.unlink", side_effect=OSError("boom")):
+            with patch.object(_write_cache_module.os, "unlink", side_effect=OSError("boom")):
                 # A lambda is not picklable -> pickle.dump raises, triggering the
                 # except branch where os.unlink (mocked) raises OSError.
                 with pytest.raises((TypeError, pickle.PicklingError, AttributeError)):

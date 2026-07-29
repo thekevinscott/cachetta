@@ -4,6 +4,7 @@ import pickle
 import tempfile
 from contextlib import contextmanager
 from datetime import timedelta
+from importlib import import_module
 from pathlib import Path
 from time import time
 from unittest.mock import patch, Mock, MagicMock
@@ -14,11 +15,17 @@ from cachetta.cachetta import Cachetta
 from cachetta.read_cache import read_stale_cache
 from cachetta.write_cache import write_cache_ctx
 
+# Resolved via import_module because `cachetta.utils` re-exports a function
+# named `cache_fn` that shadows the module of the same name, which breaks
+# string `patch("cachetta.utils.cache_fn.…")` targets on Python 3.10's
+# dotted-path lookup.
+_cache_fn_module = import_module("cachetta.utils.cache_fn")
+
 
 def describe_unified_call():
     @pytest.fixture(autouse=True)
     def mock_write_cache():
-        with patch("cachetta.utils.cache_fn.write_cache", new_callable=Mock) as mock:
+        with patch.object(_cache_fn_module, "write_cache", new_callable=Mock) as mock:
             yield mock
 
     @pytest.fixture(autouse=True)
@@ -27,7 +34,7 @@ def describe_unified_call():
         def fn(*args, **kwargs):
             yield None
         mock = MagicMock(side_effect=fn)
-        with patch("cachetta.utils.cache_fn.read_cache", mock):
+        with patch.object(_cache_fn_module, "read_cache", mock):
             yield mock
 
     def test_fn_and_kwargs_simultaneously():
@@ -58,7 +65,7 @@ def describe_unified_call():
 def describe_auto_method_receiver():
     @pytest.fixture(autouse=True)
     def mock_write_cache():
-        with patch("cachetta.utils.cache_fn.write_cache", new_callable=Mock) as mock:
+        with patch.object(_cache_fn_module, "write_cache", new_callable=Mock) as mock:
             yield mock
 
     @pytest.fixture(autouse=True)
@@ -67,7 +74,7 @@ def describe_auto_method_receiver():
         def fn(*args, **kwargs):
             yield None
         mock = MagicMock(side_effect=fn)
-        with patch("cachetta.utils.cache_fn.read_cache", mock):
+        with patch.object(_cache_fn_module, "read_cache", mock):
             yield mock
 
     def test_receiver_excluded_from_cache_path_automatically(mock_read_cache):
@@ -414,7 +421,7 @@ def describe_write_cache_context_manager():
 def describe_wrap_method():
     @pytest.fixture(autouse=True)
     def mock_write_cache():
-        with patch("cachetta.utils.cache_fn.write_cache", new_callable=Mock) as mock:
+        with patch.object(_cache_fn_module, "write_cache", new_callable=Mock) as mock:
             yield mock
 
     @pytest.fixture(autouse=True)
@@ -423,7 +430,7 @@ def describe_wrap_method():
         def fn(*args, **kwargs):
             yield None
         mock = MagicMock(side_effect=fn)
-        with patch("cachetta.utils.cache_fn.read_cache", mock):
+        with patch.object(_cache_fn_module, "read_cache", mock):
             yield mock
 
     def test_wrap_wraps_function():

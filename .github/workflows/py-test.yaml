@@ -68,3 +68,23 @@ jobs:
             "$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
           uvx diff-cover packages/python/coverage.xml \
             --compare-branch="origin/$GITHUB_BASE_REF" --fail-under=100
+
+  # The package declares requires-python ">= 3.10". The job above runs on
+  # uv's default (latest) interpreter; this one proves the floor claim by
+  # running the full suite on every supported minor below it.
+  floor:
+    name: Test (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run tests
+        working-directory: packages/python
+        run: uv run --python '${{ matrix.python }}' pytest -x -v

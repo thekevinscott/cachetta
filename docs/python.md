@@ -15,7 +15,7 @@ File-based caching for Python. Uses `pickle` for native binary serialization -- 
 uv add cachetta
 ```
 
-Requires Python 3.12+.
+Requires Python 3.10+.
 
 ## Basic Usage
 

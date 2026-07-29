@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "cachetta"
 dynamic = ["version"]
 description = "File-based caching for Python"
-requires-python = ">= 3.12"
+requires-python = ">= 3.10"
 license = "MIT"
 readme = "README.md"
 authors = [{ name = "Kevin Scott" }]
@@ -46,7 +46,7 @@ ignore_patterns = []
 # in [dependency-groups].dev below so the gate is deterministic across runs.
 # ---------------------------------------------------------------------------
 [tool.ty.environment]
-python-version = "3.12"   # matches requires-python = ">= 3.12"
+python-version = "3.10"   # matches requires-python = ">= 3.10"
 python-platform = "all"   # check every platform, not just CI's linux
 
 [tool.ty.src]

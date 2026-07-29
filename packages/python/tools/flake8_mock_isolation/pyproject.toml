@@ -2,7 +2,7 @@
 name = "flake8-mock-isolation"
 version = "0.1.0"
 description = "flake8 plugin: unit tests must mock their cross-module collaborators"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = ["flake8>=7"]
 
 [project.entry-points."flake8.extension"]

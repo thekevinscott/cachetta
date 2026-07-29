@@ -1,5 +1,6 @@
 import json
 from contextlib import contextmanager
+from importlib import import_module
 import pytest
 from pathlib import Path
 from unittest.mock import patch, Mock, MagicMock
@@ -10,10 +11,16 @@ from datetime import timedelta
 from time import time
 from typing import Any
 
+# Resolved via import_module because `cachetta.utils` re-exports a function
+# named `cache_fn` that shadows the module of the same name, which breaks
+# string `patch("cachetta.utils.cache_fn.…")` targets on Python 3.10's
+# dotted-path lookup.
+_cache_fn_module = import_module("cachetta.utils.cache_fn")
+
 
 @pytest.fixture(autouse=True)
 def mock_write_cache():
-    with patch("cachetta.utils.cache_fn.write_cache", new_callable=Mock) as mock:
+    with patch.object(_cache_fn_module, "write_cache", new_callable=Mock) as mock:
         yield mock
 
 
@@ -28,7 +35,7 @@ def make_mock_read_cache(val=None):
 @pytest.fixture(autouse=True)
 def mock_read_cache():
     mock = MagicMock(side_effect=make_mock_read_cache())
-    with patch("cachetta.utils.cache_fn.read_cache", mock):
+    with patch.object(_cache_fn_module, "read_cache", mock):
         yield mock
 
 
