@@ -382,8 +382,12 @@ def describe_stale_while_revalidate():
             result = await get_data()
             assert result == {"version": 1}
 
-            # Wait for background refresh
-            await asyncio.sleep(0.1)
+            # Wait for background refresh: poll instead of a fixed sleep — on
+            # a cold CI runner the background task can outlast any fixed
+            # budget.
+            deadline = time() + 5.0
+            while call_count < 1 and time() < deadline:
+                await asyncio.sleep(0.01)
 
             # The function should have been called in the background
             assert call_count == 1
