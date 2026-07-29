@@ -5,7 +5,7 @@ test_watch:
 	uv run ptw .
 
 lint:
-	uvx ruff check $(filter-out $@,$(MAKECMDGOALS))
+	uv run ruff check $(filter-out $@,$(MAKECMDGOALS))
 	uv run flake8 src
 
 typecheck:

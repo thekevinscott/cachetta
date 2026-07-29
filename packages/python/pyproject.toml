@@ -84,6 +84,10 @@ dev = [
     "pytest-describe>=3.1.0",
     "pytest-watcher>=0.4.3",
     "ty==0.0.44",
+    # Pinned exactly (like ty and flake8 below) so the lint gate is
+    # deterministic across runs — an unpinned `uvx ruff` broke CI when a new
+    # ruff release changed its default rule set.
+    "ruff==0.15.8",
     # Pinned exactly (like ty) so the mock-isolation lint gate is deterministic
     # across runs. flake8 hosts our in-repo plugin; `.flake8` selects only MIS,
     # so flake8's own pycodestyle/pyflakes versions don't affect results.
