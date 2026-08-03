@@ -123,7 +123,10 @@ uv build                      # Build wheel + sdist
 - Releases are orchestrated by [putitoutthere](https://github.com/thekevinscott/put-it-out-there) via `putitoutthere.toml`
 - **Trigger**: push to `main`. Any package whose `paths` matched changed files cascades at `patch`
 - **Override**: add a `release: minor`, `release: major`, or `release: skip` trailer to the commit
-- **Manual**: workflow dispatch with optional `dry_run` input
+- **Manual**: workflow dispatch with an optional `release_packages` input —
+  a comma-separated list of `name[@<bump|version>]` entries
+  (e.g. `js/cachetta@minor`, `py/cachetta@1.2.0`) that bypasses change
+  detection. Leave it empty to fall back to change detection
 - Publishing uses OIDC trusted publishing for both npm and PyPI
 
 ## Code Style
