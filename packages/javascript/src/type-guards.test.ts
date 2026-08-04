@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isCachetta, isCacheConfig, isPartialCacheConfig } from './type-guards.js';
+import { isCachetta, isCacheConfig, isClearOptions, isPartialCacheConfig } from './type-guards.js';
 import type { CacheConfig } from './types.js';
 import { Cachetta } from './Cachetta.js'; // eslint-disable-line mock-isolation/collaborators -- real Cachetta instance is the value the type guard inspects
 
@@ -104,6 +104,31 @@ describe('type-guards', () => {
 
     it('should return true for config with hashed only (issue #84)', () => {
       expect(isPartialCacheConfig({ hashed: true })).toBe(true);
+    });
+  });
+
+  describe('isClearOptions', () => {
+    it('should return true for { force: true } and { force: false }', () => {
+      expect(isClearOptions({ force: true })).toBe(true);
+      expect(isClearOptions({ force: false })).toBe(true);
+    });
+
+    it('should return false for non-objects', () => {
+      expect(isClearOptions('force')).toBe(false);
+      expect(isClearOptions(undefined)).toBe(false);
+      expect(isClearOptions(null)).toBe(false);
+    });
+
+    it('should return false for an empty object', () => {
+      expect(isClearOptions({})).toBe(false);
+    });
+
+    it('should return false when force is not a boolean', () => {
+      expect(isClearOptions({ force: 'yes' })).toBe(false);
+    });
+
+    it('should return false when extra keys are present', () => {
+      expect(isClearOptions({ force: true, extra: 1 })).toBe(false);
     });
   });
 });

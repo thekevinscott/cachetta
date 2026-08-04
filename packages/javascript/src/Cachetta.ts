@@ -1,6 +1,7 @@
 import type { CacheConfig, CacheInfo, CachableFunction, CachableFunctionSync, PathFn } from './types.js';
-import { isPartialCacheConfig } from './type-guards.js';
+import { isClearOptions, isPartialCacheConfig } from './type-guards.js';
 import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
+import { clearPath, clearPathSync, type ShouldClear } from './utils/clear-path.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
 import { promises as fs, unlinkSync } from 'fs';
 import { join } from 'path';
@@ -9,6 +10,16 @@ import { inspect } from 'util';
 import { hash } from './hash.js';
 
 const DEFAULT_DURATION = 7 * 24 * 60 * 60 * 1000; // Default 7 days in milliseconds
+
+// A trailing `{ force: boolean }` object is the options; everything before
+// it resolves the cache path, exactly like the other instance methods.
+const splitClearArgs = (argsAndOptions: unknown[]): { args: unknown[]; force: boolean } => {
+  const last = argsAndOptions[argsAndOptions.length - 1];
+  if (isClearOptions(last)) {
+    return { args: argsAndOptions.slice(0, -1), force: last.force };
+  }
+  return { args: argsAndOptions, force: false };
+};
 
 export class Cachetta<Path extends string | PathFn<any> = string> extends Function {
   protected __cacheBuddy__ = true;
@@ -19,8 +30,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   public condition!: ((result: unknown) => boolean) | undefined;
   public staleDuration!: number | undefined;
   public hashed!: boolean;
-  /** Alias for {@link invalidate}. Deletes the cache file. */
-  public clear!: (...args: unknown[]) => Promise<void>;
 
   constructor(config: CacheConfig<Path>) {
     super();
@@ -41,8 +50,8 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
         wrapSync: this.wrapSync.bind(this),
         invalidate: this.invalidate.bind(this),
         invalidateSync: this.invalidateSync.bind(this),
-        clear: this.invalidate.bind(this), // alias
-        clearSync: this.invalidateSync.bind(this), // alias
+        clear: this.clear.bind(this),
+        clearSync: this.clearSync.bind(this),
         exists: this.exists.bind(this),
         existsSync: this.existsSync.bind(this),
         age: this.age.bind(this),
@@ -76,6 +85,34 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   wrapSync(fn: CachableFunctionSync): CachableFunctionSync {
     return cacheFnSync(this as Cachetta, fn);
+  }
+
+  // A file is servable until it ages past `duration` plus the
+  // stale-while-revalidate window, so a non-forced clear never deletes an
+  // entry that a read could still return.
+  private shouldClear(force: boolean): ShouldClear {
+    if (force) {
+      return () => true;
+    }
+    const threshold = this.duration + (this.staleDuration ?? 0);
+    return (mtimeMs) => Math.max(0, Date.now() - mtimeMs) >= threshold;
+  }
+
+  /**
+   * Sweeps the resolved cache path, deleting entries that are no longer
+   * servable (age ≥ `duration` + `staleDuration`). A folder is walked
+   * recursively; a file is checked in place; a missing path is a no-op.
+   * Pass a trailing `{ force: true }` to delete every entry regardless of
+   * age. Returns the deleted file paths.
+   */
+  async clear(...argsAndOptions: unknown[]): Promise<string[]> {
+    const { args, force } = splitClearArgs(argsAndOptions);
+    return clearPath(this._getPath(...args), this.shouldClear(force));
+  }
+
+  clearSync(...argsAndOptions: unknown[]): string[] {
+    const { args, force } = splitClearArgs(argsAndOptions);
+    return clearPathSync(this._getPath(...args), this.shouldClear(force));
   }
 
   async invalidate(...args: unknown[]): Promise<void> {

@@ -8,6 +8,7 @@ from pathlib import Path
 from .exceptions import CachettaError
 from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
+from .utils.clear_path import clear_path
 from .utils.get_last_updated import async_get_last_updated
 
 
@@ -167,8 +168,36 @@ class Cachetta:
         except FileNotFoundError:
             pass
 
-    # Alias
-    clear = invalidate
+    def _should_clear(self, force: bool) -> Callable[[float], bool]:
+        # A file is servable until it ages past `duration` plus the
+        # stale-while-revalidate window, so a non-forced clear never
+        # deletes an entry that a read could still return.
+        if force:
+            return lambda mtime: True
+        threshold = self.duration + (self.stale_duration or timedelta(0))
+
+        def should_clear(mtime: float) -> bool:
+            return max(0.0, time() - mtime) >= threshold.total_seconds()
+
+        return should_clear
+
+    def clear(self, *args, force: bool = False, **kwargs) -> list[Path]:
+        """Sweeps the resolved cache path, deleting entries that are no
+        longer servable (age >= ``duration`` + ``stale_duration``).
+
+        A folder is walked recursively (directories are kept); a file is
+        checked in place; a missing path is a no-op. Pass ``force=True``
+        to delete every entry regardless of age.
+
+        Args:
+            *args, **kwargs: Arguments to resolve the cache path.
+            force: Delete every entry under the resolved path, keyword-only.
+
+        Returns:
+            The list of deleted file paths.
+        """
+        target = self._get_path(*args, **kwargs)
+        return clear_path(target, self._should_clear(force))
 
     def exists(self, *args, **kwargs) -> bool:
         """Checks whether the cache file exists on disk.
@@ -242,7 +271,9 @@ class Cachetta:
         except FileNotFoundError:
             pass
 
-    aclear = ainvalidate
+    async def aclear(self, *args, force: bool = False, **kwargs) -> list[Path]:
+        """Async version of clear. Delegates disk I/O to a thread."""
+        return await asyncio.to_thread(self.clear, *args, force=force, **kwargs)
 
     async def aexists(self, *args, **kwargs) -> bool:
         """Async version of exists."""

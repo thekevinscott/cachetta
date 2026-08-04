@@ -89,11 +89,21 @@ cache = Cachetta(
 ## Cache Invalidation
 
 ```python
-cache.invalidate()       # or cache.clear()
+cache.invalidate()       # delete the resolved cache file unconditionally
 await cache.ainvalidate()
 ```
 
 [→ Cache Invalidation](./docs/python.md#cache-invalidation)
+
+## Clearing the Cache
+
+```python
+cache.clear()            # sweep dead entries (past duration + stale_duration)
+cache.clear(force=True)  # delete every entry regardless of age
+await cache.aclear()
+```
+
+[→ Clearing the Cache](./docs/python.md#clearing-the-cache)
 
 ## Cache Inspection
 

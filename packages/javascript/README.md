@@ -92,10 +92,19 @@ const cache = new Cachetta({
 ## Cache Invalidation
 
 ```javascript
-await cache.invalidate();  // or cache.clear()
+await cache.invalidate();  // delete the resolved cache file unconditionally
 ```
 
 [→ Cache Invalidation](./docs/javascript.md#cache-invalidation)
+
+## Clearing the Cache
+
+```javascript
+await cache.clear();                 // sweep dead entries (past duration + staleDuration)
+await cache.clear({ force: true });  // delete every entry regardless of age
+```
+
+[→ Clearing the Cache](./docs/javascript.md#clearing-the-cache)
 
 ## Cache Inspection
 

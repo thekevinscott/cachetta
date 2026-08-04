@@ -232,15 +232,43 @@ cache = Cachetta(
 ```python
 cache = Cachetta(path='./cache.json')
 
-cache.invalidate()  # or cache.clear()
+cache.invalidate()  # delete the resolved cache file unconditionally
 
 # With arguments
 cache.invalidate(user_id=123)
 
-# Async variants
+# Async variant
 await cache.ainvalidate()
-await cache.aclear()
 ```
+
+## Clearing the Cache
+
+`clear` sweeps whatever the instance's path resolves to — a single file, or
+a whole folder (walked recursively; directories are kept). Without `force`
+it deletes only entries that are no longer servable: age ≥ `duration`, plus
+`stale_duration` when configured, so entries still inside the
+stale-while-revalidate window are kept. It returns the deleted file paths
+as a `list[Path]`.
+
+```python
+cache = Cachetta(
+    path='./cache',
+    hashed=True,
+    duration=timedelta(hours=1),
+)
+
+cache.clear()            # delete dead entries, keep fresh/stale ones
+cache.clear(force=True)  # delete every entry regardless of age
+
+# With arguments (when using path functions) — force is keyword-only
+cache.clear(user_id=123, force=True)
+
+# Async variants
+await cache.aclear()
+await cache.aclear(force=True)
+```
+
+A missing path is a no-op that returns `[]`.
 
 ## Cache Inspection
 

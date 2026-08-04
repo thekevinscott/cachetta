@@ -28,6 +28,49 @@ One paragraph: what broke and why.
   snippet below.
 -->
 
+## v0.5 → v0.6
+
+### Summary
+`clear` and `clearSync` are no longer plain aliases of
+`invalidate`/`invalidateSync`. They are now an expiry-aware sweep of
+whatever the instance's path resolves to: a folder is walked recursively
+(directories are kept), a single file is checked in place, and a missing
+path is a no-op. Without options, only entries that are no longer
+servable are deleted — age ≥ `duration`, plus `staleDuration` when
+configured, so entries inside the stale-while-revalidate window are
+kept. A trailing `{ force: true }` options object deletes every entry
+regardless of age. Both methods now return the deleted file paths
+(`string[]`) instead of `void`. The change exists so hashed/foldered
+caches can be cleaned of dead entries without knowing every arg-set ever
+used (#110). `invalidate`/`invalidateSync` are unchanged.
+
+### Required changes
+| Before | After |
+|--------|-------|
+| `await cache.clear()` (expecting unconditional delete) | `await cache.clear({ force: true })` or `await cache.invalidate()` |
+| `cache.clearSync()` (expecting unconditional delete) | `cache.clearSync({ force: true })` or `cache.invalidateSync()` |
+| `await cache.clear('userId')` (delete one entry unconditionally) | `await cache.clear('userId', { force: true })` or `await cache.invalidate('userId')` |
+
+### Deprecations removed
+None.
+
+### Behavior changes without code changes
+- `clear()`/`clearSync()` without `force` now **keep** entries younger
+  than `duration` + `staleDuration` instead of deleting the resolved
+  file unconditionally.
+- `clear()`/`clearSync()` on a folder now sweep the folder's files
+  recursively; previously they attempted to `unlink` the folder itself
+  and threw (`EISDIR`/`EPERM`).
+- `clear()`/`clearSync()` now return the deleted file paths instead of
+  `undefined`, and return `[]` (instead of silently succeeding) when the
+  path does not exist.
+
+### Verification
+- `await cache.clear()` on a cache whose file was written moments ago
+  must return `[]` and leave the file in place.
+- `await cache.clear({ force: true })` on the same cache must return the
+  file's path and delete it.
+
 ## v0.4 → v0.5
 
 ### Summary

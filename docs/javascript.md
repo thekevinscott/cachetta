@@ -276,12 +276,40 @@ its result — including its error, if the refresh fails.
 ```javascript
 const cache = new Cachetta({ path: './cache.json' });
 
-await cache.invalidate();  // or cache.clear()
+await cache.invalidate();  // delete the resolved cache file unconditionally
 cache.invalidateSync();    // sync variant
 
 // With arguments (when using path functions)
 await cache.invalidate('userId');
 ```
+
+## Clearing the Cache
+
+`clear` sweeps whatever the instance's path resolves to — a single file, or
+a whole folder (walked recursively; directories are kept). Without options
+it deletes only entries that are no longer servable: age ≥ `duration`, plus
+`staleDuration` when configured, so entries still inside the
+stale-while-revalidate window are kept. It returns the deleted file paths.
+
+```javascript
+const cache = new Cachetta({
+  path: './cache',
+  hashed: true,
+  duration: 60 * 60 * 1000,
+});
+
+await cache.clear();                 // delete dead entries, keep fresh/stale ones
+await cache.clear({ force: true });  // delete every entry regardless of age
+cache.clearSync();                   // sync variants
+cache.clearSync({ force: true });
+
+// With arguments (when using path functions) — options always come last
+await cache.clear('userId', { force: true });
+```
+
+A missing path is a no-op that returns `[]`. Note the options object is
+recognized only when it is exactly `{ force: boolean }`, so a trailing
+cache arg is never mistaken for options.
 
 ## Cache Inspection
 
