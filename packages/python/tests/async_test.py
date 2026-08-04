@@ -215,8 +215,16 @@ def describe_async_instance_methods():
             # Should not raise
             await cache.ainvalidate()
 
-    async def test_aclear_is_ainvalidate():
-        assert Cachetta.aclear is Cachetta.ainvalidate
+    async def test_aclear_keeps_a_fresh_entry_unless_forced():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "aclear.json"
+            cache_path.write_text('{"data": true}')
+
+            cache = Cachetta(path=str(cache_path))
+            await cache.aclear()
+            assert cache_path.exists()
+            await cache.aclear(force=True)
+            assert not cache_path.exists()
 
     async def test_aexists_true():
         with tempfile.TemporaryDirectory() as tmpdir:

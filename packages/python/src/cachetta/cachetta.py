@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from time import time
@@ -8,7 +9,9 @@ from pathlib import Path
 from .exceptions import CachettaError
 from .hash import hash as _hash
 from .utils import logger, cache_fn, get_last_updated
+from .utils.clear_path import clear_path
 from .utils.get_last_updated import async_get_last_updated
+from .write_cache import forget_created_dirs
 
 
 _SENTINEL = object()
@@ -167,8 +170,45 @@ class Cachetta:
         except FileNotFoundError:
             pass
 
-    # Alias
-    clear = invalidate
+    def _should_clear(self) -> Callable[[float], bool]:
+        # A file is servable until it ages past `duration` plus the
+        # stale-while-revalidate window, so a non-forced clear never
+        # deletes an entry that a read could still return.
+        threshold = self.duration + (self.stale_duration or timedelta(0))
+
+        def should_clear(mtime: float) -> bool:
+            return max(0.0, time() - mtime) >= threshold.total_seconds()
+
+        return should_clear
+
+    def clear(self, *args, force: bool = False, **kwargs) -> None:
+        """Sweeps the resolved cache path, deleting entries that are no
+        longer servable (age >= ``duration`` + ``stale_duration``).
+
+        A folder is walked recursively (directories are kept); a file is
+        checked in place; a missing path is a no-op. ``force=True`` skips
+        the walk entirely and removes the resolved path wholesale, folder
+        and all; writes re-create the folder.
+
+        Args:
+            *args, **kwargs: Arguments to resolve the cache path.
+            force: Remove the resolved path wholesale, keyword-only.
+        """
+        target = self._get_path(*args, **kwargs)
+        if force:
+            try:
+                shutil.rmtree(target)
+            except NotADirectoryError:
+                # The resolved path is a single file, not a folder.
+                try:
+                    os.unlink(target)
+                except FileNotFoundError:
+                    pass
+            except FileNotFoundError:
+                pass
+            forget_created_dirs()
+            return
+        clear_path(target, self._should_clear())
 
     def exists(self, *args, **kwargs) -> bool:
         """Checks whether the cache file exists on disk.
@@ -242,7 +282,9 @@ class Cachetta:
         except FileNotFoundError:
             pass
 
-    aclear = ainvalidate
+    async def aclear(self, *args, force: bool = False, **kwargs) -> None:
+        """Async version of clear. Delegates disk I/O to a thread."""
+        await asyncio.to_thread(self.clear, *args, force=force, **kwargs)
 
     async def aexists(self, *args, **kwargs) -> bool:
         """Async version of exists."""

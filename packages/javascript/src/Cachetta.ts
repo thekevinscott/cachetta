@@ -1,14 +1,26 @@
 import type { CacheConfig, CacheInfo, CachableFunction, CachableFunctionSync, PathFn } from './types.js';
-import { isPartialCacheConfig } from './type-guards.js';
+import { isClearOptions, isPartialCacheConfig } from './type-guards.js';
 import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
+import { clearPath, clearPathSync, type ShouldClear } from './utils/clear-path.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
-import { promises as fs, unlinkSync } from 'fs';
+import { forgetCreatedDirs } from './write-cache.js';
+import { promises as fs, rmSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { inspect } from 'util';
 
 import { hash } from './hash.js';
 
 const DEFAULT_DURATION = 7 * 24 * 60 * 60 * 1000; // Default 7 days in milliseconds
+
+// A trailing `{ force: boolean }` object is the options; everything before
+// it resolves the cache path, exactly like the other instance methods.
+const splitClearArgs = (argsAndOptions: unknown[]): { args: unknown[]; force: boolean } => {
+  const last = argsAndOptions[argsAndOptions.length - 1];
+  if (isClearOptions(last)) {
+    return { args: argsAndOptions.slice(0, -1), force: last.force };
+  }
+  return { args: argsAndOptions, force: false };
+};
 
 export class Cachetta<Path extends string | PathFn<any> = string> extends Function {
   protected __cacheBuddy__ = true;
@@ -19,8 +31,6 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   public condition!: ((result: unknown) => boolean) | undefined;
   public staleDuration!: number | undefined;
   public hashed!: boolean;
-  /** Alias for {@link invalidate}. Deletes the cache file. */
-  public clear!: (...args: unknown[]) => Promise<void>;
 
   constructor(config: CacheConfig<Path>) {
     super();
@@ -41,8 +51,8 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
         wrapSync: this.wrapSync.bind(this),
         invalidate: this.invalidate.bind(this),
         invalidateSync: this.invalidateSync.bind(this),
-        clear: this.invalidate.bind(this), // alias
-        clearSync: this.invalidateSync.bind(this), // alias
+        clear: this.clear.bind(this),
+        clearSync: this.clearSync.bind(this),
         exists: this.exists.bind(this),
         existsSync: this.existsSync.bind(this),
         age: this.age.bind(this),
@@ -76,6 +86,43 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
 
   wrapSync(fn: CachableFunctionSync): CachableFunctionSync {
     return cacheFnSync(this as Cachetta, fn);
+  }
+
+  // A file is servable until it ages past `duration` plus the
+  // stale-while-revalidate window, so a non-forced clear never deletes an
+  // entry that a read could still return.
+  private shouldClear(): ShouldClear {
+    const threshold = this.duration + (this.staleDuration ?? 0);
+    return (mtimeMs) => Math.max(0, Date.now() - mtimeMs) >= threshold;
+  }
+
+  /**
+   * Sweeps the resolved cache path, deleting entries that are no longer
+   * servable (age ≥ `duration` + `staleDuration`). A folder is walked
+   * recursively; a file is checked in place; a missing path is a no-op.
+   * A trailing `{ force: true }` skips the walk entirely and removes the
+   * resolved path wholesale, folder and all; writes re-create the folder.
+   */
+  async clear(...argsAndOptions: unknown[]): Promise<void> {
+    const { args, force } = splitClearArgs(argsAndOptions);
+    const target = this._getPath(...args);
+    if (force) {
+      await fs.rm(target, { recursive: true, force: true });
+      forgetCreatedDirs();
+      return;
+    }
+    await clearPath(target, this.shouldClear());
+  }
+
+  clearSync(...argsAndOptions: unknown[]): void {
+    const { args, force } = splitClearArgs(argsAndOptions);
+    const target = this._getPath(...args);
+    if (force) {
+      rmSync(target, { recursive: true, force: true });
+      forgetCreatedDirs();
+      return;
+    }
+    clearPathSync(target, this.shouldClear());
   }
 
   async invalidate(...args: unknown[]): Promise<void> {

@@ -113,13 +113,15 @@ def describe_cache_invalidation():
         # Should not raise
         cache.invalidate()
 
-    def test_clear_is_alias_for_invalidate():
+    def test_clear_keeps_a_fresh_entry_unless_forced():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "test.json"
             cache_path.write_text('{"data": true}')
 
             cache = Cachetta(path=str(cache_path))
             cache.clear()
+            assert cache_path.exists()
+            cache.clear(force=True)
             assert not cache_path.exists()
 
     def test_invalidate_with_path_function():

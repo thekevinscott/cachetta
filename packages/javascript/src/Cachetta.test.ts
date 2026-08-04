@@ -248,10 +248,113 @@ describe('Cachetta', () => {
       await expect(cache.invalidate()).resolves.toBeUndefined();
     });
 
-    it('clear should be an alias for invalidate', async () => {
-      const cache = new Cachetta({ path: join(tempDir, 'test.json') });
-      expect(cache.clear).toBeDefined();
-      expect(typeof cache.clear).toBe('function');
+  });
+
+  describe('clear', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp('cachetta-test-');
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    const writeAged = async (path: string, ageMs: number) => {
+      await fs.writeFile(path, '{"data":1}');
+      const t = new Date(Date.now() - ageMs);
+      await fs.utimes(path, t, t);
+    };
+
+    it('keeps a file younger than duration', async () => {
+      const cachePath = join(tempDir, 'fresh.json');
+      await writeAged(cachePath, 0);
+      const cache = new Cachetta({ path: cachePath, duration: 60000 });
+      await expect(cache.clear()).resolves.toBeUndefined();
+      await expect(fs.access(cachePath)).resolves.toBeUndefined();
+    });
+
+    it('deletes a file older than duration', async () => {
+      const cachePath = join(tempDir, 'old.json');
+      await writeAged(cachePath, 5000);
+      const cache = new Cachetta({ path: cachePath, duration: 1000 });
+      await cache.clear();
+      await expect(fs.access(cachePath)).rejects.toThrow();
+    });
+
+    it('keeps an expired file that is still inside the stale window', async () => {
+      const cachePath = join(tempDir, 'stale.json');
+      await writeAged(cachePath, 5000);
+      const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 60000 });
+      await cache.clear();
+      await expect(fs.access(cachePath)).resolves.toBeUndefined();
+    });
+
+    it('deletes a file past duration + staleDuration', async () => {
+      const cachePath = join(tempDir, 'dead.json');
+      await writeAged(cachePath, 5000);
+      const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 1000 });
+      await cache.clear();
+      await expect(fs.access(cachePath)).rejects.toThrow();
+    });
+
+    it('force removes a fresh file without statting it', async () => {
+      const cachePath = join(tempDir, 'fresh.json');
+      await writeAged(cachePath, 0);
+      const cache = new Cachetta({ path: cachePath, duration: 60000 });
+      await expect(cache.clear({ force: true })).resolves.toBeUndefined();
+      await expect(fs.access(cachePath)).rejects.toThrow();
+    });
+
+    it('force removes a folder wholesale', async () => {
+      const cacheDir = join(tempDir, 'dir');
+      await fs.mkdir(cacheDir);
+      await writeAged(join(cacheDir, 'entry'), 0);
+      const cache = new Cachetta({ path: cacheDir, duration: 60000 });
+      await cache.clear({ force: true });
+      await expect(fs.access(cacheDir)).rejects.toThrow();
+    });
+
+    it('force: false behaves like no options', async () => {
+      const cachePath = join(tempDir, 'fresh.json');
+      await writeAged(cachePath, 0);
+      const cache = new Cachetta({ path: cachePath, duration: 60000 });
+      await cache.clear({ force: false });
+      await expect(fs.access(cachePath)).resolves.toBeUndefined();
+    });
+
+    it('resolves the path from leading args, options-last', async () => {
+      const pathFn = (name: string) => join(tempDir, `${name}.json`);
+      const cache = new Cachetta({ path: pathFn as any, duration: 60000 });
+      await writeAged(pathFn('a'), 0);
+      await writeAged(pathFn('b'), 0);
+      await cache.clear('a', { force: true });
+      await expect(fs.access(pathFn('a'))).rejects.toThrow();
+      await expect(fs.access(pathFn('b'))).resolves.toBeUndefined();
+    });
+
+    it('is a no-op for a missing path', async () => {
+      const cache = new Cachetta({ path: join(tempDir, 'nope.json') });
+      await expect(cache.clear()).resolves.toBeUndefined();
+    });
+
+    it('clearSync mirrors clear, including force', async () => {
+      const cachePath = join(tempDir, 'sync.json');
+      await writeAged(cachePath, 0);
+      const cache = new Cachetta({ path: cachePath, duration: 60000 });
+      expect(cache.clearSync()).toBeUndefined();
+      await expect(fs.access(cachePath)).resolves.toBeUndefined();
+      expect(cache.clearSync({ force: true })).toBeUndefined();
+      await expect(fs.access(cachePath)).rejects.toThrow();
+    });
+
+    it('clearSync deletes an expired file without force', async () => {
+      const cachePath = join(tempDir, 'sync-old.json');
+      await writeAged(cachePath, 5000);
+      const cache = new Cachetta({ path: cachePath, duration: 1000 });
+      cache.clearSync();
+      await expect(fs.access(cachePath)).rejects.toThrow();
     });
   });
 

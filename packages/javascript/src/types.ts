@@ -19,6 +19,12 @@ export interface CacheInfo {
   path: string;
 }
 
+/** Trailing options object accepted by `clear`/`clearSync`. */
+export interface ClearOptions {
+  /** When true, every file under the resolved path is deleted regardless of age. */
+  force: boolean;
+}
+
 export type PathFn<T extends unknown[] = unknown[]> = (...args: T) => string;
 export type CachableFunction = (...args: unknown[]) => unknown;
 export type CachableFunctionSync = (...args: unknown[]) => unknown;

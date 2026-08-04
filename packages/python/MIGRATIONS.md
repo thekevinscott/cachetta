@@ -28,6 +28,54 @@ One paragraph: what broke and why.
   snippet below.
 -->
 
+## v0.8 → v0.9
+
+### Summary
+`clear` and `aclear` are no longer plain aliases of
+`invalidate`/`ainvalidate`. They are now an expiry-aware sweep of
+whatever the instance's path resolves to: a folder is walked recursively
+(directories are kept), a single file is checked in place, and a missing
+path is a no-op. Without `force`, only entries that are no longer
+servable are deleted — age ≥ `duration`, plus `stale_duration` when
+configured, so entries inside the stale-while-revalidate window are
+kept. The keyword-only `force=True` skips the walk and removes the
+resolved path wholesale, folder and all; the folder is re-created on the
+next write. Both methods still return `None`. The change exists so
+hashed/foldered caches can be cleaned of dead entries without knowing
+every arg-set ever used (#110). `invalidate`/`ainvalidate` are
+unchanged.
+
+### Required changes
+| Before | After |
+|--------|-------|
+| `cache.clear()` (expecting unconditional delete) | `cache.clear(force=True)` or `cache.invalidate()` |
+| `await cache.aclear()` (expecting unconditional delete) | `await cache.aclear(force=True)` or `await cache.ainvalidate()` |
+| `cache.clear(user_id=123)` (delete one entry unconditionally) | `cache.clear(user_id=123, force=True)` or `cache.invalidate(user_id=123)` |
+
+### Deprecations removed
+None.
+
+### Behavior changes without code changes
+- `clear()`/`aclear()` without `force` now **keep** entries younger than
+  `duration` + `stale_duration` instead of deleting the resolved file
+  unconditionally.
+- `clear()`/`aclear()` on a folder now sweep the folder's files
+  recursively; previously they attempted to `os.unlink` the folder
+  itself and raised `IsADirectoryError`.
+- `clear(force=True)` removes the resolved folder itself, not just its
+  contents. Code holding a path to that folder (or watching it) sees it
+  disappear until the next write re-creates it.
+- A path-resolving keyword argument named `force` can no longer be
+  forwarded to a callable `path` via `clear`/`aclear` — `force` is
+  consumed as the sweep flag. Use `invalidate` (unchanged) or rename the
+  callable's parameter if you need a literal `force` kwarg.
+
+### Verification
+- `cache.clear()` on a cache whose file was written moments ago must
+  leave the file in place.
+- `cache.clear(force=True)` on the same cache must delete it, and a
+  subsequent `write_cache` must succeed (the folder is re-created).
+
 ## v0.7 → v0.8
 
 ### Summary

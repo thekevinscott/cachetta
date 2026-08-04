@@ -437,12 +437,14 @@ describe('comprehensive integration tests', () => {
       expect(await readCache(cache)).toEqual({ version: 2 });
     });
 
-    it('clear should work as alias for invalidate', async () => {
+    it('clear should keep a fresh entry unless forced', async () => {
       const cachePath = join(tempDir, 'clr.json');
       const cache = new Cachetta({ path: cachePath });
       await writeCache(cache, { data: 1 });
       await cache.clear();
-      expect(await readCache(cache)).toBeNull();
+      expect(await readCache(cache)).toEqual({ data: 1 });
+      await cache.clear({ force: true });
+      expect(await cache.exists()).toBe(false);
     });
   });
 
@@ -771,12 +773,14 @@ describe('comprehensive integration tests', () => {
       expect(readCacheSync(cache)).toBeNull();
     });
 
-    it('clearSync should work as alias', () => {
+    it('clearSync should keep a fresh entry unless forced', () => {
       const cachePath = join(tempDir, 'sync-clr.json');
       const cache = new Cachetta({ path: cachePath });
       writeCacheSync(cache, { data: 1 });
       cache.clearSync();
-      expect(readCacheSync(cache)).toBeNull();
+      expect(readCacheSync(cache)).toEqual({ data: 1 });
+      cache.clearSync({ force: true });
+      expect(cache.existsSync()).toBe(false);
     });
   });
 

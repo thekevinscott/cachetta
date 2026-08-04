@@ -45,6 +45,18 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   literal-path semantics.
 
 ### Changed
+- **Breaking:** `clear(*args, force=False, **kwargs)` and
+  `aclear(*args, force=False, **kwargs)` are no longer plain aliases of
+  `invalidate`/`ainvalidate`. They now sweep the resolved cache path — a
+  folder is walked recursively, a single file is checked in place —
+  deleting only entries that are no longer servable (age ≥ `duration`,
+  plus `stale_duration` when configured, so entries still inside the
+  stale-while-revalidate window are kept). The keyword-only `force=True`
+  skips the walk and removes the resolved path wholesale, folder and all;
+  the folder is re-created on the next write. Both still return `None`,
+  and a missing path is a no-op. `invalidate`/`ainvalidate` are
+  unchanged — use them (or `force=True`) for the old unconditional
+  single-entry delete. See [MIGRATIONS.md](./MIGRATIONS.md). (#110)
 - Lowered the supported Python floor from 3.12 to 3.10: `requires-python`
   is now `>= 3.10`, so the package installs on Python 3.10 and 3.11. No
   API changes — the source already used nothing newer than 3.10 syntax.
