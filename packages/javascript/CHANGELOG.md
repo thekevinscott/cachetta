@@ -38,6 +38,18 @@ This package does not strictly follow [Semantic Versioning](https://semver.org/)
   literal-path semantics.
 
 ### Changed
+- **Breaking:** `clear(...args, options?)` and `clearSync(...args, options?)`
+  are no longer plain aliases of `invalidate`/`invalidateSync`. They now
+  sweep the resolved cache path — a folder is walked recursively, a single
+  file is checked in place — deleting only entries that are no longer
+  servable (age ≥ `duration`, plus `staleDuration` when configured, so
+  entries still inside the stale-while-revalidate window are kept).
+  Passing a trailing `{ force: true }` options object deletes every entry
+  regardless of age. Both methods now return the list of deleted file
+  paths instead of `void`; a missing path is a no-op returning `[]`.
+  `invalidate`/`invalidateSync` are unchanged — use them (or `force`) for
+  the old unconditional single-entry delete. See
+  [MIGRATIONS.md](./MIGRATIONS.md). (#110)
 - The published tarball now ships `docs/` **recursively**, so markdown
   files under nested subdirectories (e.g. `docs/llm/javascript/index.md`)
   land in `node_modules/cachetta/docs/` alongside the top-level pages.
