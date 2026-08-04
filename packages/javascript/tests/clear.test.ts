@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { Cachetta, writeCache } from 'cachetta';
+import { Cachetta, readCache, writeCache } from 'cachetta';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -22,7 +22,7 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
   });
 
   describe('folder sweep without force', () => {
-    it('deletes dead entries, keeps fresh ones, and returns the deleted paths', async () => {
+    it('deletes dead entries and keeps fresh ones, returning nothing', async () => {
       const cacheDir = join(tempDir, 'cache');
       const cache = new Cachetta({ path: cacheDir, hashed: true, duration: HOUR });
 
@@ -32,9 +32,8 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
       await backdate(cache._getPath('old-a'), 2 * HOUR);
       await backdate(cache._getPath('old-b'), 3 * HOUR);
 
-      const deleted = await cache.clear();
+      await expect(cache.clear()).resolves.toBeUndefined();
 
-      expect(deleted.sort()).toEqual([cache._getPath('old-a'), cache._getPath('old-b')].sort());
       expect(await fs.readdir(cacheDir)).toHaveLength(1);
       expect(await cache.exists('fresh')).toBe(true);
       expect(await cache.exists('old-a')).toBe(false);
@@ -58,9 +57,8 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
       // Past duration + staleDuration: never servable again.
       await backdate(cache._getPath('dead'), 2.5 * HOUR);
 
-      const deleted = await cache.clear();
+      await cache.clear();
 
-      expect(deleted).toEqual([cache._getPath('dead')]);
       expect(await cache.exists('fresh')).toBe(true);
       expect(await cache.exists('stale')).toBe(true);
       expect(await cache.exists('dead')).toBe(false);
@@ -75,16 +73,16 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
       await fs.writeFile(nestedFile, JSON.stringify({ v: 1 }));
       await backdate(nestedFile, 2 * HOUR);
 
-      const deleted = await cache.clear();
+      await cache.clear();
 
-      expect(deleted).toEqual([nestedFile]);
+      await expect(fs.access(nestedFile)).rejects.toThrow();
       // The (now empty) subfolder still exists.
       await expect(fs.access(join(cacheDir, 'nested'))).resolves.toBeUndefined();
     });
   });
 
   describe('force override', () => {
-    it('wipes every entry in the folder regardless of freshness', async () => {
+    it('removes the folder wholesale regardless of freshness', async () => {
       const cacheDir = join(tempDir, 'cache');
       const cache = new Cachetta({ path: cacheDir, hashed: true, duration: HOUR });
 
@@ -92,10 +90,11 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
       await writeCache(cache, { v: 2 }, 'old');
       await backdate(cache._getPath('old'), 2 * HOUR);
 
-      const deleted = await cache.clear({ force: true });
+      await expect(cache.clear({ force: true })).resolves.toBeUndefined();
 
-      expect(deleted.sort()).toEqual([cache._getPath('fresh'), cache._getPath('old')].sort());
-      expect(await fs.readdir(cacheDir)).toHaveLength(0);
+      await expect(fs.access(cacheDir)).rejects.toThrow();
+      expect(await cache.exists('fresh')).toBe(false);
+      expect(await cache.exists('old')).toBe(false);
     });
 
     it('deletes a fresh single-file cache', async () => {
@@ -104,10 +103,20 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
 
       await writeCache(cache, { v: 1 });
 
-      const deleted = await cache.clear({ force: true });
+      await cache.clear({ force: true });
 
-      expect(deleted).toEqual([cachePath]);
       expect(await cache.exists()).toBe(false);
+    });
+
+    it('writes re-create the folder after a forced clear in the same process', async () => {
+      const cacheDir = join(tempDir, 'cache');
+      const cache = new Cachetta({ path: cacheDir, hashed: true, duration: HOUR });
+
+      await writeCache(cache, { v: 1 }, 'entry');
+      await cache.clear({ force: true });
+      await writeCache(cache, { v: 2 }, 'entry');
+
+      expect(await readCache(cache, 'entry')).toEqual({ v: 2 });
     });
   });
 
@@ -119,9 +128,8 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
       await writeCache(cache, { v: 1 });
       await backdate(cachePath, 2 * HOUR);
 
-      const deleted = await cache.clear();
+      await cache.clear();
 
-      expect(deleted).toEqual([cachePath]);
       expect(await cache.exists()).toBe(false);
     });
 
@@ -131,9 +139,8 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
 
       await writeCache(cache, { v: 1 });
 
-      const deleted = await cache.clear();
+      await cache.clear();
 
-      expect(deleted).toEqual([]);
       expect(await cache.exists()).toBe(true);
     });
   });
@@ -150,19 +157,18 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
       await writeCache(cache, { v: 2 }, 'claude');
 
       // Both entries are fresh; force-clear only the 'gpt' entry.
-      const deleted = await cache.clear('gpt', { force: true });
+      await cache.clear('gpt', { force: true });
 
-      expect(deleted).toEqual([cache._getPath('gpt')]);
       expect(await cache.exists('gpt')).toBe(false);
       expect(await cache.exists('claude')).toBe(true);
     });
   });
 
   describe('missing path', () => {
-    it('is a no-op that returns an empty array', async () => {
+    it('is a no-op', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'nope'), duration: HOUR });
-      await expect(cache.clear()).resolves.toEqual([]);
-      await expect(cache.clear({ force: true })).resolves.toEqual([]);
+      await expect(cache.clear()).resolves.toBeUndefined();
+      await expect(cache.clear({ force: true })).resolves.toBeUndefined();
     });
   });
 
@@ -175,19 +181,17 @@ describe('clear as an expiry-aware sweep (issue #110)', () => {
       await writeCache(cache, { v: 2 }, 'old');
       await backdate(cache._getPath('old'), 2 * HOUR);
 
-      const deleted = cache.clearSync();
-      expect(deleted).toEqual([cache._getPath('old')]);
+      expect(cache.clearSync()).toBeUndefined();
       expect(cache.existsSync('fresh')).toBe(true);
       expect(cache.existsSync('old')).toBe(false);
 
-      const forced = cache.clearSync({ force: true });
-      expect(forced).toEqual([cache._getPath('fresh')]);
-      expect(cache.existsSync('fresh')).toBe(false);
+      expect(cache.clearSync({ force: true })).toBeUndefined();
+      await expect(fs.access(cacheDir)).rejects.toThrow();
     });
 
     it('is a no-op on a missing path', () => {
       const cache = new Cachetta({ path: join(tempDir, 'nope'), duration: HOUR });
-      expect(cache.clearSync()).toEqual([]);
+      expect(cache.clearSync()).toBeUndefined();
     });
   });
 });

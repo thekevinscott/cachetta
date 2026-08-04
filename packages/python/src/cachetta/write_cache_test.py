@@ -10,6 +10,7 @@ from cachetta.write_cache import (
     write_cache_ctx,
     async_write_cache,
     async_write_cache_ctx,
+    forget_created_dirs,
     _created_dirs,
     _CREATED_DIRS_MAX,
 )
@@ -293,3 +294,13 @@ def describe_created_dirs_cache():
         assert len(_created_dirs) == _CREATED_DIRS_MAX
         assert "/fake/dir/0" not in _created_dirs
         _created_dirs.clear()
+
+    def test_forget_created_dirs_empties_the_cache():
+        """A forced clear removes cache directories wholesale, so the
+        tracked set has to be dropped or later writes skip the mkdir."""
+        _created_dirs.clear()
+        _created_dirs["/fake/dir/0"] = None
+
+        forget_created_dirs()
+
+        assert len(_created_dirs) == 0

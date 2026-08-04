@@ -549,25 +549,23 @@ def describe_invalidate():
 
 
 def describe_clear():
-    def test_sweeps_the_resolved_path_and_returns_deleted_paths():
+    def test_sweeps_the_resolved_path_and_returns_nothing():
         cache = Cachetta(path="cache")
-        with patch(
-            "cachetta.cachetta.clear_path", return_value=[Path("cache/a")]
-        ) as mock_clear_path:
-            assert cache.clear() == [Path("cache/a")]
+        with patch("cachetta.cachetta.clear_path") as mock_clear_path:
+            assert cache.clear() is None
         target, _should_clear = mock_clear_path.call_args.args
         assert target == Path("cache")
 
     def test_resolves_the_path_with_args_and_kwargs():
         cache = Cachetta(path=lambda name: f"cache/{name}")
-        with patch("cachetta.cachetta.clear_path", return_value=[]) as mock_clear_path:
+        with patch("cachetta.cachetta.clear_path") as mock_clear_path:
             cache.clear(name="gpt")
         target, _should_clear = mock_clear_path.call_args.args
         assert target == Path("cache/gpt")
 
     def test_without_force_keeps_servable_files():
         cache = Cachetta(path="cache", duration=timedelta(hours=1))
-        with patch("cachetta.cachetta.clear_path", return_value=[]) as mock_clear_path:
+        with patch("cachetta.cachetta.clear_path") as mock_clear_path:
             cache.clear()
         _target, should_clear = mock_clear_path.call_args.args
         assert should_clear(time()) is False  # fresh
@@ -579,7 +577,7 @@ def describe_clear():
             duration=timedelta(hours=1),
             stale_duration=timedelta(hours=1),
         )
-        with patch("cachetta.cachetta.clear_path", return_value=[]) as mock_clear_path:
+        with patch("cachetta.cachetta.clear_path") as mock_clear_path:
             cache.clear()
         _target, should_clear = mock_clear_path.call_args.args
         assert should_clear(time() - 5400) is False  # expired but stale
@@ -587,19 +585,56 @@ def describe_clear():
 
     def test_future_mtimes_are_clamped_to_age_zero():
         cache = Cachetta(path="cache", duration=timedelta(seconds=0))
-        with patch("cachetta.cachetta.clear_path", return_value=[]) as mock_clear_path:
+        with patch("cachetta.cachetta.clear_path") as mock_clear_path:
             cache.clear()
         _target, should_clear = mock_clear_path.call_args.args
         # Zero duration means age 0 is already >= the threshold, so the
         # clamp (not a negative age) is what this asserts.
         assert should_clear(time() + 3600) is True
 
-    def test_force_clears_regardless_of_age():
+    def test_force_removes_the_tree_without_walking_it():
         cache = Cachetta(path="cache", duration=timedelta(days=365))
-        with patch("cachetta.cachetta.clear_path", return_value=[]) as mock_clear_path:
+        with (
+            patch("cachetta.cachetta.clear_path") as mock_clear_path,
+            patch("cachetta.cachetta.shutil.rmtree") as rmtree,
+            patch("cachetta.cachetta.forget_created_dirs") as forget,
+        ):
+            assert cache.clear(force=True) is None
+        rmtree.assert_called_once_with(Path("cache"))
+        mock_clear_path.assert_not_called()
+        forget.assert_called_once()
+
+    def test_force_falls_back_to_unlink_for_a_single_file():
+        cache = Cachetta(path="cache.json")
+        with (
+            patch(
+                "cachetta.cachetta.shutil.rmtree", side_effect=NotADirectoryError
+            ),
+            patch("cachetta.cachetta.os.unlink") as unlink,
+            patch("cachetta.cachetta.forget_created_dirs"),
+        ):
             cache.clear(force=True)
-        _target, should_clear = mock_clear_path.call_args.args
-        assert should_clear(time()) is True
+        unlink.assert_called_once_with(Path("cache.json"))
+
+    def test_force_swallows_a_missing_file_on_the_unlink_fallback():
+        cache = Cachetta(path="cache.json")
+        with (
+            patch(
+                "cachetta.cachetta.shutil.rmtree", side_effect=NotADirectoryError
+            ),
+            patch("cachetta.cachetta.os.unlink", side_effect=FileNotFoundError),
+            patch("cachetta.cachetta.forget_created_dirs"),
+        ):
+            cache.clear(force=True)  # must not raise
+
+    def test_force_swallows_a_missing_path():
+        cache = Cachetta(path="cache")
+        with (
+            patch("cachetta.cachetta.shutil.rmtree", side_effect=FileNotFoundError),
+            patch("cachetta.cachetta.forget_created_dirs") as forget,
+        ):
+            cache.clear(force=True)  # must not raise
+        forget.assert_called_once()
 
 
 def describe_sync_instance_methods():
@@ -678,14 +713,23 @@ def describe_async_instance_methods():
         with patch("cachetta.cachetta.os.unlink", side_effect=FileNotFoundError):
             await cache.ainvalidate()
 
-    async def test_aclear_delegates_to_clear_with_force():
+    async def test_aclear_sweeps_the_resolved_path_and_returns_nothing():
         cache = Cachetta(path="cache")
-        with patch(
-            "cachetta.cachetta.clear_path", return_value=[Path("cache/a")]
-        ) as mock_clear_path:
-            assert await cache.aclear(force=True) == [Path("cache/a")]
-        _target, should_clear = mock_clear_path.call_args.args
-        assert should_clear(time()) is True
+        with patch("cachetta.cachetta.clear_path") as mock_clear_path:
+            assert await cache.aclear() is None
+        target, _should_clear = mock_clear_path.call_args.args
+        assert target == Path("cache")
+
+    async def test_aclear_forwards_force():
+        cache = Cachetta(path="cache")
+        with (
+            patch("cachetta.cachetta.clear_path") as mock_clear_path,
+            patch("cachetta.cachetta.shutil.rmtree") as rmtree,
+            patch("cachetta.cachetta.forget_created_dirs"),
+        ):
+            assert await cache.aclear(force=True) is None
+        rmtree.assert_called_once_with(Path("cache"))
+        mock_clear_path.assert_not_called()
 
     async def test_aexists_true_and_false():
         with patch("cachetta.cachetta.async_get_last_updated", return_value=1.0):

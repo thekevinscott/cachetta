@@ -101,7 +101,7 @@ await cache.invalidate();  // delete the resolved cache file unconditionally
 
 ```javascript
 await cache.clear();                 // sweep dead entries (past duration + staleDuration)
-await cache.clear({ force: true });  // delete every entry regardless of age
+await cache.clear({ force: true });  // remove the whole path, folder and all
 ```
 
 [→ Clearing the Cache](./docs/javascript.md#clearing-the-cache)

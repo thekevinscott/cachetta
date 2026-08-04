@@ -38,11 +38,12 @@ whatever the instance's path resolves to: a folder is walked recursively
 path is a no-op. Without `force`, only entries that are no longer
 servable are deleted — age ≥ `duration`, plus `stale_duration` when
 configured, so entries inside the stale-while-revalidate window are
-kept. The keyword-only `force=True` deletes every entry regardless of
-age. Both methods now return the deleted file paths (`list[Path]`)
-instead of `None`. The change exists so hashed/foldered caches can be
-cleaned of dead entries without knowing every arg-set ever used (#110).
-`invalidate`/`ainvalidate` are unchanged.
+kept. The keyword-only `force=True` skips the walk and removes the
+resolved path wholesale, folder and all; the folder is re-created on the
+next write. Both methods still return `None`. The change exists so
+hashed/foldered caches can be cleaned of dead entries without knowing
+every arg-set ever used (#110). `invalidate`/`ainvalidate` are
+unchanged.
 
 ### Required changes
 | Before | After |
@@ -61,9 +62,9 @@ None.
 - `clear()`/`aclear()` on a folder now sweep the folder's files
   recursively; previously they attempted to `os.unlink` the folder
   itself and raised `IsADirectoryError`.
-- `clear()`/`aclear()` now return the deleted file paths instead of
-  `None`, and return `[]` (instead of silently succeeding) when the path
-  does not exist.
+- `clear(force=True)` removes the resolved folder itself, not just its
+  contents. Code holding a path to that folder (or watching it) sees it
+  disappear until the next write re-creates it.
 - A path-resolving keyword argument named `force` can no longer be
   forwarded to a callable `path` via `clear`/`aclear` — `force` is
   consumed as the sweep flag. Use `invalidate` (unchanged) or rename the
@@ -71,9 +72,9 @@ None.
 
 ### Verification
 - `cache.clear()` on a cache whose file was written moments ago must
-  return `[]` and leave the file in place.
-- `cache.clear(force=True)` on the same cache must return the file's
-  path and delete it.
+  leave the file in place.
+- `cache.clear(force=True)` on the same cache must delete it, and a
+  subsequent `write_cache` must succeed (the folder is re-created).
 
 ## v0.7 → v0.8
 

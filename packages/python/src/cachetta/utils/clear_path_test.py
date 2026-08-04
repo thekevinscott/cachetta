@@ -14,22 +14,22 @@ def never(_mtime: float) -> bool:
 
 
 def describe_clear_path():
-    def test_returns_empty_for_missing_path():
+    def test_is_a_no_op_for_missing_path():
         with tempfile.TemporaryDirectory() as tmpdir:
-            assert clear_path(Path(tmpdir) / "nope", always) == []
+            assert clear_path(Path(tmpdir) / "nope", always) is None
 
     def test_deletes_a_file_when_should_clear_returns_true():
         with tempfile.TemporaryDirectory() as tmpdir:
             file = Path(tmpdir) / "a"
             file.write_text("x")
-            assert clear_path(file, always) == [file]
+            clear_path(file, always)
             assert not file.exists()
 
     def test_keeps_a_file_when_should_clear_returns_false():
         with tempfile.TemporaryDirectory() as tmpdir:
             file = Path(tmpdir) / "a"
             file.write_text("x")
-            assert clear_path(file, never) == []
+            clear_path(file, never)
             assert file.exists()
 
     def test_passes_the_file_mtime_to_should_clear():
@@ -55,12 +55,13 @@ def describe_clear_path():
             (root / "a").write_text("x")
             (sub / "b").write_text("x")
 
-            deleted = clear_path(root, always)
+            clear_path(root, always)
 
-            assert sorted(deleted) == sorted([root / "a", sub / "b"])
+            assert not (root / "a").exists()
+            assert not (sub / "b").exists()
             assert sub.is_dir()
 
-    def test_treats_a_file_vanishing_between_stat_and_unlink_as_not_deleted():
+    def test_tolerates_a_file_vanishing_between_stat_and_unlink():
         with tempfile.TemporaryDirectory() as tmpdir:
             file = Path(tmpdir) / "a"
             file.write_text("x")
@@ -71,4 +72,4 @@ def describe_clear_path():
                 os.unlink(file)
                 return True
 
-            assert clear_path(file, vanish) == []
+            assert clear_path(file, vanish) is None

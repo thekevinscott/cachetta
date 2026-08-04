@@ -444,7 +444,7 @@ describe('comprehensive integration tests', () => {
       await cache.clear();
       expect(await readCache(cache)).toEqual({ data: 1 });
       await cache.clear({ force: true });
-      expect(await readCache(cache)).toBeNull();
+      expect(await cache.exists()).toBe(false);
     });
   });
 
@@ -780,7 +780,7 @@ describe('comprehensive integration tests', () => {
       cache.clearSync();
       expect(readCacheSync(cache)).toEqual({ data: 1 });
       cache.clearSync({ force: true });
-      expect(readCacheSync(cache)).toBeNull();
+      expect(cache.existsSync()).toBe(false);
     });
   });
 

@@ -3,7 +3,8 @@ import { isClearOptions, isPartialCacheConfig } from './type-guards.js';
 import { cacheFn, cacheFnSync } from './utils/cache-fn.js';
 import { clearPath, clearPathSync, type ShouldClear } from './utils/clear-path.js';
 import { getLastUpdated, getLastUpdatedSync } from './utils/get-last-updated.js';
-import { promises as fs, unlinkSync } from 'fs';
+import { forgetCreatedDirs } from './write-cache.js';
+import { promises as fs, rmSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { inspect } from 'util';
 
@@ -90,10 +91,7 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
   // A file is servable until it ages past `duration` plus the
   // stale-while-revalidate window, so a non-forced clear never deletes an
   // entry that a read could still return.
-  private shouldClear(force: boolean): ShouldClear {
-    if (force) {
-      return () => true;
-    }
+  private shouldClear(): ShouldClear {
     const threshold = this.duration + (this.staleDuration ?? 0);
     return (mtimeMs) => Math.max(0, Date.now() - mtimeMs) >= threshold;
   }
@@ -102,17 +100,29 @@ export class Cachetta<Path extends string | PathFn<any> = string> extends Functi
    * Sweeps the resolved cache path, deleting entries that are no longer
    * servable (age ≥ `duration` + `staleDuration`). A folder is walked
    * recursively; a file is checked in place; a missing path is a no-op.
-   * Pass a trailing `{ force: true }` to delete every entry regardless of
-   * age. Returns the deleted file paths.
+   * A trailing `{ force: true }` skips the walk entirely and removes the
+   * resolved path wholesale, folder and all; writes re-create the folder.
    */
-  async clear(...argsAndOptions: unknown[]): Promise<string[]> {
+  async clear(...argsAndOptions: unknown[]): Promise<void> {
     const { args, force } = splitClearArgs(argsAndOptions);
-    return clearPath(this._getPath(...args), this.shouldClear(force));
+    const target = this._getPath(...args);
+    if (force) {
+      await fs.rm(target, { recursive: true, force: true });
+      forgetCreatedDirs();
+      return;
+    }
+    await clearPath(target, this.shouldClear());
   }
 
-  clearSync(...argsAndOptions: unknown[]): string[] {
+  clearSync(...argsAndOptions: unknown[]): void {
     const { args, force } = splitClearArgs(argsAndOptions);
-    return clearPathSync(this._getPath(...args), this.shouldClear(force));
+    const target = this._getPath(...args);
+    if (force) {
+      rmSync(target, { recursive: true, force: true });
+      forgetCreatedDirs();
+      return;
+    }
+    clearPathSync(target, this.shouldClear());
   }
 
   async invalidate(...args: unknown[]): Promise<void> {

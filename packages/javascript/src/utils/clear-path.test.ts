@@ -18,8 +18,8 @@ describe('clearPath', () => {
   });
 
   describe('async', () => {
-    it('returns [] for a missing path', async () => {
-      expect(await clearPath(join(tempDir, 'nope'), always)).toEqual([]);
+    it('is a no-op for a missing path', async () => {
+      await expect(clearPath(join(tempDir, 'nope'), always)).resolves.toBeUndefined();
     });
 
     it('rethrows non-ENOENT stat errors', async () => {
@@ -33,14 +33,14 @@ describe('clearPath', () => {
     it('deletes a file when shouldClear returns true', async () => {
       const file = join(tempDir, 'a');
       await fs.writeFile(file, 'x');
-      expect(await clearPath(file, always)).toEqual([file]);
+      await clearPath(file, always);
       await expect(fs.access(file)).rejects.toThrow();
     });
 
     it('keeps a file when shouldClear returns false', async () => {
       const file = join(tempDir, 'a');
       await fs.writeFile(file, 'x');
-      expect(await clearPath(file, never)).toEqual([]);
+      await clearPath(file, never);
       await expect(fs.access(file)).resolves.toBeUndefined();
     });
 
@@ -61,21 +61,21 @@ describe('clearPath', () => {
       await fs.mkdir(join(tempDir, 'sub'));
       await fs.writeFile(join(tempDir, 'a'), 'x');
       await fs.writeFile(join(tempDir, 'sub', 'b'), 'x');
-      const deleted = await clearPath(tempDir, always);
-      expect(deleted.sort()).toEqual([join(tempDir, 'a'), join(tempDir, 'sub', 'b')].sort());
+      await clearPath(tempDir, always);
+      await expect(fs.access(join(tempDir, 'a'))).rejects.toThrow();
+      await expect(fs.access(join(tempDir, 'sub', 'b'))).rejects.toThrow();
       await expect(fs.access(join(tempDir, 'sub'))).resolves.toBeUndefined();
     });
 
-    it('treats a file vanishing between stat and unlink as not deleted', async () => {
+    it('tolerates a file vanishing between stat and unlink', async () => {
       const file = join(tempDir, 'a');
       await fs.writeFile(file, 'x');
       // shouldClear runs between stat and unlink — deleting the file here
       // reproduces the race deterministically.
-      const deleted = await clearPath(file, () => {
+      await expect(clearPath(file, () => {
         unlinkSync(file);
         return true;
-      });
-      expect(deleted).toEqual([]);
+      })).resolves.toBeUndefined();
     });
 
     it('rethrows non-ENOENT unlink errors', async () => {
@@ -92,8 +92,8 @@ describe('clearPath', () => {
   });
 
   describe('sync', () => {
-    it('returns [] for a missing path', () => {
-      expect(clearPathSync(join(tempDir, 'nope'), always)).toEqual([]);
+    it('is a no-op for a missing path', () => {
+      expect(clearPathSync(join(tempDir, 'nope'), always)).toBeUndefined();
     });
 
     it('rethrows non-ENOENT stat errors', async () => {
@@ -105,14 +105,14 @@ describe('clearPath', () => {
     it('deletes a file when shouldClear returns true', async () => {
       const file = join(tempDir, 'a');
       await fs.writeFile(file, 'x');
-      expect(clearPathSync(file, always)).toEqual([file]);
+      clearPathSync(file, always);
       await expect(fs.access(file)).rejects.toThrow();
     });
 
     it('keeps a file when shouldClear returns false', async () => {
       const file = join(tempDir, 'a');
       await fs.writeFile(file, 'x');
-      expect(clearPathSync(file, never)).toEqual([]);
+      clearPathSync(file, never);
       await expect(fs.access(file)).resolves.toBeUndefined();
     });
 
@@ -120,19 +120,19 @@ describe('clearPath', () => {
       await fs.mkdir(join(tempDir, 'sub'));
       await fs.writeFile(join(tempDir, 'a'), 'x');
       await fs.writeFile(join(tempDir, 'sub', 'b'), 'x');
-      const deleted = clearPathSync(tempDir, always);
-      expect(deleted.sort()).toEqual([join(tempDir, 'a'), join(tempDir, 'sub', 'b')].sort());
+      clearPathSync(tempDir, always);
+      await expect(fs.access(join(tempDir, 'a'))).rejects.toThrow();
+      await expect(fs.access(join(tempDir, 'sub', 'b'))).rejects.toThrow();
       await expect(fs.access(join(tempDir, 'sub'))).resolves.toBeUndefined();
     });
 
-    it('treats a file vanishing between stat and unlink as not deleted', async () => {
+    it('tolerates a file vanishing between stat and unlink', async () => {
       const file = join(tempDir, 'a');
       await fs.writeFile(file, 'x');
-      const deleted = clearPathSync(file, () => {
+      expect(clearPathSync(file, () => {
         unlinkSync(file);
         return true;
-      });
-      expect(deleted).toEqual([]);
+      })).toBeUndefined();
     });
 
     it('rethrows non-ENOENT unlink errors', async () => {

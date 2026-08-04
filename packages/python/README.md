@@ -99,7 +99,7 @@ await cache.ainvalidate()
 
 ```python
 cache.clear()            # sweep dead entries (past duration + stale_duration)
-cache.clear(force=True)  # delete every entry regardless of age
+cache.clear(force=True)  # remove the whole path, folder and all
 await cache.aclear()
 ```
 

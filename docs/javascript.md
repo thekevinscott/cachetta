@@ -289,7 +289,7 @@ await cache.invalidate('userId');
 a whole folder (walked recursively; directories are kept). Without options
 it deletes only entries that are no longer servable: age ≥ `duration`, plus
 `staleDuration` when configured, so entries still inside the
-stale-while-revalidate window are kept. It returns the deleted file paths.
+stale-while-revalidate window are kept.
 
 ```javascript
 const cache = new Cachetta({
@@ -299,7 +299,7 @@ const cache = new Cachetta({
 });
 
 await cache.clear();                 // delete dead entries, keep fresh/stale ones
-await cache.clear({ force: true });  // delete every entry regardless of age
+await cache.clear({ force: true });  // remove the whole path, folder and all
 cache.clearSync();                   // sync variants
 cache.clearSync({ force: true });
 
@@ -307,9 +307,14 @@ cache.clearSync({ force: true });
 await cache.clear('userId', { force: true });
 ```
 
-A missing path is a no-op that returns `[]`. Note the options object is
-recognized only when it is exactly `{ force: boolean }`, so a trailing
-cache arg is never mistaken for options.
+Both methods return nothing. `force` skips the walk entirely and removes
+the resolved path wholesale (`fs.rm` recursive), so wiping a large cache
+costs one syscall rather than a traversal of every entry; the folder is
+re-created on the next write. A missing path is a no-op.
+
+Note the options object is recognized only when it is exactly
+`{ force: boolean }`, so a trailing cache arg is never mistaken for
+options.
 
 ## Cache Inspection
 

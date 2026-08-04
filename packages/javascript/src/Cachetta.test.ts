@@ -271,15 +271,15 @@ describe('Cachetta', () => {
       const cachePath = join(tempDir, 'fresh.json');
       await writeAged(cachePath, 0);
       const cache = new Cachetta({ path: cachePath, duration: 60000 });
-      expect(await cache.clear()).toEqual([]);
+      await expect(cache.clear()).resolves.toBeUndefined();
       await expect(fs.access(cachePath)).resolves.toBeUndefined();
     });
 
-    it('deletes a file older than duration and returns its path', async () => {
+    it('deletes a file older than duration', async () => {
       const cachePath = join(tempDir, 'old.json');
       await writeAged(cachePath, 5000);
       const cache = new Cachetta({ path: cachePath, duration: 1000 });
-      expect(await cache.clear()).toEqual([cachePath]);
+      await cache.clear();
       await expect(fs.access(cachePath)).rejects.toThrow();
     });
 
@@ -287,7 +287,7 @@ describe('Cachetta', () => {
       const cachePath = join(tempDir, 'stale.json');
       await writeAged(cachePath, 5000);
       const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 60000 });
-      expect(await cache.clear()).toEqual([]);
+      await cache.clear();
       await expect(fs.access(cachePath)).resolves.toBeUndefined();
     });
 
@@ -295,22 +295,32 @@ describe('Cachetta', () => {
       const cachePath = join(tempDir, 'dead.json');
       await writeAged(cachePath, 5000);
       const cache = new Cachetta({ path: cachePath, duration: 1000, staleDuration: 1000 });
-      expect(await cache.clear()).toEqual([cachePath]);
+      await cache.clear();
+      await expect(fs.access(cachePath)).rejects.toThrow();
     });
 
-    it('force deletes a fresh file', async () => {
+    it('force removes a fresh file without statting it', async () => {
       const cachePath = join(tempDir, 'fresh.json');
       await writeAged(cachePath, 0);
       const cache = new Cachetta({ path: cachePath, duration: 60000 });
-      expect(await cache.clear({ force: true })).toEqual([cachePath]);
+      await expect(cache.clear({ force: true })).resolves.toBeUndefined();
       await expect(fs.access(cachePath)).rejects.toThrow();
+    });
+
+    it('force removes a folder wholesale', async () => {
+      const cacheDir = join(tempDir, 'dir');
+      await fs.mkdir(cacheDir);
+      await writeAged(join(cacheDir, 'entry'), 0);
+      const cache = new Cachetta({ path: cacheDir, duration: 60000 });
+      await cache.clear({ force: true });
+      await expect(fs.access(cacheDir)).rejects.toThrow();
     });
 
     it('force: false behaves like no options', async () => {
       const cachePath = join(tempDir, 'fresh.json');
       await writeAged(cachePath, 0);
       const cache = new Cachetta({ path: cachePath, duration: 60000 });
-      expect(await cache.clear({ force: false })).toEqual([]);
+      await cache.clear({ force: false });
       await expect(fs.access(cachePath)).resolves.toBeUndefined();
     });
 
@@ -319,22 +329,23 @@ describe('Cachetta', () => {
       const cache = new Cachetta({ path: pathFn as any, duration: 60000 });
       await writeAged(pathFn('a'), 0);
       await writeAged(pathFn('b'), 0);
-      expect(await cache.clear('a', { force: true })).toEqual([pathFn('a')]);
+      await cache.clear('a', { force: true });
       await expect(fs.access(pathFn('a'))).rejects.toThrow();
       await expect(fs.access(pathFn('b'))).resolves.toBeUndefined();
     });
 
-    it('returns [] for a missing path', async () => {
+    it('is a no-op for a missing path', async () => {
       const cache = new Cachetta({ path: join(tempDir, 'nope.json') });
-      expect(await cache.clear()).toEqual([]);
+      await expect(cache.clear()).resolves.toBeUndefined();
     });
 
     it('clearSync mirrors clear, including force', async () => {
       const cachePath = join(tempDir, 'sync.json');
       await writeAged(cachePath, 0);
       const cache = new Cachetta({ path: cachePath, duration: 60000 });
-      expect(cache.clearSync()).toEqual([]);
-      expect(cache.clearSync({ force: true })).toEqual([cachePath]);
+      expect(cache.clearSync()).toBeUndefined();
+      await expect(fs.access(cachePath)).resolves.toBeUndefined();
+      expect(cache.clearSync({ force: true })).toBeUndefined();
       await expect(fs.access(cachePath)).rejects.toThrow();
     });
 
@@ -342,7 +353,8 @@ describe('Cachetta', () => {
       const cachePath = join(tempDir, 'sync-old.json');
       await writeAged(cachePath, 5000);
       const cache = new Cachetta({ path: cachePath, duration: 1000 });
-      expect(cache.clearSync()).toEqual([cachePath]);
+      cache.clearSync();
+      await expect(fs.access(cachePath)).rejects.toThrow();
     });
   });
 

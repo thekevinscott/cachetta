@@ -9,69 +9,62 @@ const isENOENT = (error: unknown): boolean => (error as NodeJS.ErrnoException).c
 /**
  * Deletes files under `target` for which `shouldClear(mtime)` returns true.
  * A directory is walked recursively (directories themselves are kept); a
- * file is checked in place; a missing path is a no-op. Returns the deleted
- * file paths.
+ * file is checked in place; a missing path is a no-op.
  */
-export async function clearPath(target: string, shouldClear: ShouldClear): Promise<string[]> {
+export async function clearPath(target: string, shouldClear: ShouldClear): Promise<void> {
   let stats;
   try {
     stats = await fs.stat(target);
   } catch (error) {
     if (isENOENT(error)) {
-      return [];
+      return;
     }
     throw error;
   }
-  if (!stats.isDirectory()) {
-    if (!shouldClear(stats.mtime.getTime())) {
-      return [];
+  if (stats.isDirectory()) {
+    for (const entry of await fs.readdir(target)) {
+      await clearPath(join(target, entry), shouldClear);
     }
-    try {
-      await fs.unlink(target);
-    } catch (error) {
-      // The file vanished between stat and unlink; it was not deleted by us.
-      if (isENOENT(error)) {
-        return [];
-      }
+    return;
+  }
+  if (!shouldClear(stats.mtime.getTime())) {
+    return;
+  }
+  try {
+    await fs.unlink(target);
+  } catch (error) {
+    // The file vanished between stat and unlink; nothing left to do.
+    if (!isENOENT(error)) {
       throw error;
     }
-    return [target];
   }
-  const deleted: string[] = [];
-  for (const entry of await fs.readdir(target)) {
-    deleted.push(...(await clearPath(join(target, entry), shouldClear)));
-  }
-  return deleted;
 }
 
-export function clearPathSync(target: string, shouldClear: ShouldClear): string[] {
+export function clearPathSync(target: string, shouldClear: ShouldClear): void {
   let stats;
   try {
     stats = statSync(target);
   } catch (error) {
     if (isENOENT(error)) {
-      return [];
+      return;
     }
     throw error;
   }
-  if (!stats.isDirectory()) {
-    if (!shouldClear(stats.mtime.getTime())) {
-      return [];
+  if (stats.isDirectory()) {
+    for (const entry of readdirSync(target)) {
+      clearPathSync(join(target, entry), shouldClear);
     }
-    try {
-      unlinkSync(target);
-    } catch (error) {
-      // The file vanished between stat and unlink; it was not deleted by us.
-      if (isENOENT(error)) {
-        return [];
-      }
+    return;
+  }
+  if (!shouldClear(stats.mtime.getTime())) {
+    return;
+  }
+  try {
+    unlinkSync(target);
+  } catch (error) {
+    // The file vanished between stat and unlink; nothing left to do.
+    if (!isENOENT(error)) {
       throw error;
     }
-    return [target];
   }
-  const deleted: string[] = [];
-  for (const entry of readdirSync(target)) {
-    deleted.push(...clearPathSync(join(target, entry), shouldClear));
-  }
-  return deleted;
 }

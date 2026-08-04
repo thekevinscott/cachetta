@@ -6,7 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 from time import time
 
-from cachetta import Cachetta, write_cache
+from cachetta import Cachetta, read_cache, write_cache
 
 HOUR = timedelta(hours=1)
 
@@ -17,7 +17,7 @@ def backdate(path: str | Path, hours: float) -> None:
 
 
 def describe_folder_sweep_without_force():
-    def test_deletes_dead_entries_keeps_fresh_and_returns_deleted_paths():
+    def test_deletes_dead_entries_keeps_fresh_and_returns_nothing():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
             cache = Cachetta(path=cache_dir, hashed=True, duration=HOUR)
@@ -28,12 +28,8 @@ def describe_folder_sweep_without_force():
             backdate(cache._get_path("old_a"), 2)
             backdate(cache._get_path("old_b"), 3)
 
-            deleted = cache.clear()
+            assert cache.clear() is None
 
-            assert deleted is not None
-            assert sorted(deleted) == sorted(
-                [cache._get_path("old_a"), cache._get_path("old_b")]
-            )
             assert len(list(cache_dir.iterdir())) == 1
             assert cache.exists("fresh")
             assert not cache.exists("old_a")
@@ -58,9 +54,8 @@ def describe_folder_sweep_without_force():
             # Past duration + stale_duration: never servable again.
             backdate(cache._get_path("dead"), 2.5)
 
-            deleted = cache.clear()
+            cache.clear()
 
-            assert deleted == [cache._get_path("dead")]
             assert cache.exists("fresh")
             assert cache.exists("stale")
             assert not cache.exists("dead")
@@ -76,15 +71,15 @@ def describe_folder_sweep_without_force():
             nested_file.write_text('{"v": 1}')
             backdate(nested_file, 2)
 
-            deleted = cache.clear()
+            cache.clear()
 
-            assert deleted == [nested_file]
+            assert not nested_file.exists()
             # The (now empty) subfolder still exists.
             assert nested_dir.is_dir()
 
 
 def describe_force_override():
-    def test_wipes_every_entry_in_the_folder_regardless_of_freshness():
+    def test_removes_the_folder_wholesale_regardless_of_freshness():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
             cache = Cachetta(path=cache_dir, hashed=True, duration=HOUR)
@@ -93,13 +88,11 @@ def describe_force_override():
             write_cache(cache, {"v": 2}, "old")
             backdate(cache._get_path("old"), 2)
 
-            deleted = cache.clear(force=True)
+            assert cache.clear(force=True) is None
 
-            assert deleted is not None
-            assert sorted(deleted) == sorted(
-                [cache._get_path("fresh"), cache._get_path("old")]
-            )
-            assert list(cache_dir.iterdir()) == []
+            assert not cache_dir.exists()
+            assert not cache.exists("fresh")
+            assert not cache.exists("old")
 
     def test_deletes_a_fresh_single_file_cache():
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -108,10 +101,22 @@ def describe_force_override():
 
             write_cache(cache, {"v": 1})
 
-            deleted = cache.clear(force=True)
+            cache.clear(force=True)
 
-            assert deleted == [cache_path]
             assert not cache.exists()
+
+    def test_writes_recreate_the_folder_after_a_forced_clear():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            cache = Cachetta(path=cache_dir, hashed=True, duration=HOUR)
+
+            write_cache(cache, {"v": 1}, "entry")
+            cache.clear(force=True)
+            write_cache(cache, {"v": 2}, "entry")
+
+            with read_cache(cache, "entry") as result:
+                pass
+            assert result == {"v": 2}
 
 
 def describe_single_file_cache_without_force():
@@ -123,9 +128,8 @@ def describe_single_file_cache_without_force():
             write_cache(cache, {"v": 1})
             backdate(cache_path, 2)
 
-            deleted = cache.clear()
+            cache.clear()
 
-            assert deleted == [cache_path]
             assert not cache.exists()
 
     def test_keeps_the_file_while_it_is_fresh():
@@ -135,9 +139,8 @@ def describe_single_file_cache_without_force():
 
             write_cache(cache, {"v": 1})
 
-            deleted = cache.clear()
+            cache.clear()
 
-            assert deleted == []
             assert cache.exists()
 
 
@@ -154,19 +157,18 @@ def describe_path_resolution_parity_with_other_methods():
             write_cache(cache, {"v": 2}, "claude")
 
             # Both entries are fresh; force-clear only the 'gpt' entry.
-            deleted = cache.clear("gpt", force=True)
+            cache.clear("gpt", force=True)
 
-            assert deleted == [cache._get_path("gpt")]
             assert not cache.exists("gpt")
             assert cache.exists("claude")
 
 
 def describe_missing_path():
-    def test_is_a_no_op_that_returns_an_empty_list():
+    def test_is_a_no_op():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(path=Path(tmpdir) / "nope", duration=HOUR)
-            assert cache.clear() == []
-            assert cache.clear(force=True) == []
+            assert cache.clear() is None
+            assert cache.clear(force=True) is None
 
 
 def describe_aclear():
@@ -179,16 +181,14 @@ def describe_aclear():
             write_cache(cache, {"v": 2}, "old")
             backdate(cache._get_path("old"), 2)
 
-            deleted = await cache.aclear()
-            assert deleted == [cache._get_path("old")]
+            assert await cache.aclear() is None
             assert cache.exists("fresh")
             assert not cache.exists("old")
 
-            forced = await cache.aclear(force=True)
-            assert forced == [cache._get_path("fresh")]
-            assert not cache.exists("fresh")
+            assert await cache.aclear(force=True) is None
+            assert not cache_dir.exists()
 
     async def test_is_a_no_op_on_a_missing_path():
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Cachetta(path=Path(tmpdir) / "nope", duration=HOUR)
-            assert await cache.aclear() == []
+            assert await cache.aclear() is None

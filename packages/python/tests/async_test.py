@@ -221,9 +221,9 @@ def describe_async_instance_methods():
             cache_path.write_text('{"data": true}')
 
             cache = Cachetta(path=str(cache_path))
-            assert await cache.aclear() == []
+            await cache.aclear()
             assert cache_path.exists()
-            assert await cache.aclear(force=True) == [cache_path]
+            await cache.aclear(force=True)
             assert not cache_path.exists()
 
     async def test_aexists_true():

@@ -9,6 +9,12 @@ import { serialize } from 'v8';
 // If an entry were evicted, mkdir(recursive:true) is idempotent so correctness is preserved.
 const createdDirs = new Set<string>();
 
+// Called when cache directories are removed wholesale (a forced clear), so
+// the "tracked ⇒ exists" assumption holds and later writes re-create them.
+export function forgetCreatedDirs(): void {
+  createdDirs.clear();
+}
+
 export async function writeCache<T>(cache: Cachetta<any>, data: T, ...args: unknown[]): Promise<void> {
   if (!cache || !cache.write) {
     return;

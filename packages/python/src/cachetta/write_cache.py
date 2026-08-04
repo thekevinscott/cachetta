@@ -15,6 +15,14 @@ _created_dirs: OrderedDict[str, None] = OrderedDict()
 _created_dirs_lock = threading.Lock()
 
 
+def forget_created_dirs() -> None:
+    """Called when cache directories are removed wholesale (a forced
+    clear), so the "tracked => exists" assumption holds and later writes
+    re-create them."""
+    with _created_dirs_lock:
+        _created_dirs.clear()
+
+
 def write_cache(cache, data: Any, *args, **kwargs) -> None:
     if cache and cache.write:
         cache_path = cache._get_path(*args, **kwargs)

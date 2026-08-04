@@ -38,11 +38,12 @@ whatever the instance's path resolves to: a folder is walked recursively
 path is a no-op. Without options, only entries that are no longer
 servable are deleted — age ≥ `duration`, plus `staleDuration` when
 configured, so entries inside the stale-while-revalidate window are
-kept. A trailing `{ force: true }` options object deletes every entry
-regardless of age. Both methods now return the deleted file paths
-(`string[]`) instead of `void`. The change exists so hashed/foldered
-caches can be cleaned of dead entries without knowing every arg-set ever
-used (#110). `invalidate`/`invalidateSync` are unchanged.
+kept. A trailing `{ force: true }` options object skips the walk and
+removes the resolved path wholesale, folder and all; the folder is
+re-created on the next write. Both methods still return `void`. The
+change exists so hashed/foldered caches can be cleaned of dead entries
+without knowing every arg-set ever used (#110).
+`invalidate`/`invalidateSync` are unchanged.
 
 ### Required changes
 | Before | After |
@@ -61,15 +62,15 @@ None.
 - `clear()`/`clearSync()` on a folder now sweep the folder's files
   recursively; previously they attempted to `unlink` the folder itself
   and threw (`EISDIR`/`EPERM`).
-- `clear()`/`clearSync()` now return the deleted file paths instead of
-  `undefined`, and return `[]` (instead of silently succeeding) when the
-  path does not exist.
+- `clear({ force: true })` removes the resolved folder itself, not just
+  its contents. Code holding a path to that folder (or watching it) sees
+  it disappear until the next write re-creates it.
 
 ### Verification
 - `await cache.clear()` on a cache whose file was written moments ago
-  must return `[]` and leave the file in place.
-- `await cache.clear({ force: true })` on the same cache must return the
-  file's path and delete it.
+  must leave the file in place.
+- `await cache.clear({ force: true })` on the same cache must delete it,
+  and a subsequent `writeCache` must succeed (the folder is re-created).
 
 ## v0.4 → v0.5
 
