@@ -34,6 +34,15 @@ follow.
 3. **If `CLAUDE_CODE_REMOTE` is unset**, no environment file is required. `AGENTS.md`
    alone is the whole picture for local interactive sessions.
 
+## Design decisions
+
+Settled questions live in [`notes/decisions/`](./decisions/). Read the relevant
+record before re-proposing something it covers, and if you and the user reach a
+durable conclusion on a recurring design question, record it there.
+
+- [`no-cli.md`](./decisions/no-cli.md) — cachetta does not ship a CLI; verbs
+  belong in consuming apps, built on the library's method primitives.
+
 ## Local interactive sessions
 
 In a local interactive session the user is at the keyboard and can answer questions, so
